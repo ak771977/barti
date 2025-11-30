@@ -196,11 +196,18 @@ class GridBollingerStrategy:
             return
         if self.state.levels_filled >= self.cfg.max_levels or spacing <= 0:
             return
-        if self.state.next_entry_price is None and self.state.last_entry_price is not None:
-            self.state.next_entry_price = (
+        # Keep next entry anchored to the last fill so spacing is respected even after restarts/config changes.
+        if self.state.last_entry_price is not None:
+            target_from_last = (
                 self.state.last_entry_price + spacing if self.state.direction == "short" else self.state.last_entry_price - spacing
             )
-            self.state_store.save(self.state)
+            if (
+                self.state.next_entry_price is None
+                or (self.state.direction == "long" and self.state.next_entry_price > target_from_last + 1e-9)
+                or (self.state.direction == "short" and self.state.next_entry_price < target_from_last - 1e-9)
+            ):
+                self.state.next_entry_price = target_from_last
+                self.state_store.save(self.state)
 
         while True:
             target_price = self.state.next_entry_price
@@ -227,7 +234,7 @@ class GridBollingerStrategy:
             order, executed, entry_price = self._execute_market(side, qty, price)
             self.state.levels_filled = level
             self.state.last_entry_price = entry_price
-            self.state.next_entry_price = target_price + spacing if self.state.direction == "short" else target_price - spacing
+            self.state.next_entry_price = entry_price + spacing if self.state.direction == "short" else entry_price - spacing
             cumulative_qty = sum(
                 level_qty(i, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
                 for i in range(1, level + 1)
@@ -303,6 +310,14 @@ class GridBollingerStrategy:
         mark_price = pos_info.get("markPrice", price) or price
         unrealized = pos_info.get("unRealizedProfit", 0.0)
         entry_price = pos_info.get("entryPrice", 0.0)
+        if self.state.last_entry_price is None and entry_price:
+            self.state.last_entry_price = entry_price
+            spacing = self.cfg.grid_spacing_usd
+            if spacing > 0:
+                self.state.next_entry_price = (
+                    entry_price + spacing if self.state.direction == "short" else entry_price - spacing
+                )
+            self.state_store.save(self.state)
         now = time.time()
         notional = abs(position_qty) * mark_price
         if notional > 0:
