@@ -100,7 +100,10 @@ def main() -> None:
 
     if args.seed and price:
         direction = "long" if args.seed == "buy" else "short"
-        strat.force_seed(direction, price)
+        try:
+            strat.force_seed(direction, price)
+        except BinanceAPIError as exc:
+            logger.error("Failed to seed grid (%s): %s", direction, exc)
 
     logger.info("Starting loop for %s; poll every %ss", cfg.symbol.name, cfg.poll_interval_seconds)
     last_balance_log = 0.0
