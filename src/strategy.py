@@ -650,9 +650,8 @@ class GridBollingerStrategy:
                 )
             self.state_store.save(self.state)
         now = time.time()
-        notional = abs(position_qty) * mark_price
-        if notional > 0:
-            drawdown = unrealized / notional
+        if abs(position_qty) > 0:
+            drawdown = unrealized
             if drawdown < self.state.worst_drawdown:
                 self.state.worst_drawdown = drawdown
                 self.state_store.save(self.state)

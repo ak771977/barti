@@ -33,7 +33,7 @@ Minimal Python bot for ETHUSDT perpetuals on Binance Futures with Bollinger-trig
 - Cooldown: set `cooldown_minutes` to delay re-arming a new grid after full exit (0 = immediate).
 - State is persisted to `state/state.json` and reloaded on startup; `--drain` manages existing grid but won’t start new ones.
 - Balance/maintenance margin is logged every `balance_log_interval_seconds`.
-- Each grid/basket is tagged with an incrementing ID; tracked stats include levels filled, max position size (ETH), worst drawdown (as pct of notional, reported as a positive magnitude), and an approximate PnL at closure (wallet change over the basket; assumes no other trading).
+- Each grid/basket is tagged with an incrementing ID; tracked stats include levels filled, max position size (ETH), worst drawdown (absolute USDT magnitude), and an approximate PnL at closure (wallet change over the basket; assumes no other trading).
 - Session caps (in-memory): `session_limits.max_grids` stops starting new grids after N baskets; `session_limits.max_gain_usd` stops once cumulative session PnL meets/exceeds the target (enables drain mode automatically).
 - Logs rotate daily under `logs/` and older months are zipped into `logs/archive/`.
 - Poll loop uses REST every `poll_interval_seconds` (default 10s) to keep VPS footprint low. Websocket/reactive mode can be added later.

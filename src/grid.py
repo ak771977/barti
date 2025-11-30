@@ -14,7 +14,7 @@ class GridState:
     basket_id: int = 0
     basket_start_balance: Optional[float] = None
     max_volume: float = 0.0
-    worst_drawdown: float = 0.0  # negative values represent drawdown
+    worst_drawdown: float = 0.0  # negative values represent the worst unrealized loss in USDT
     basket_open_ts: Optional[float] = None
     entry_order_ids: List[int] = field(default_factory=list)
     tp_order_ids: List[int] = field(default_factory=list)
