@@ -386,9 +386,9 @@ class GridBollingerStrategy:
                 avg_entry = entry_price
                 last_entry = self.state.last_entry_price or entry_price
                 self.log.info(
-                    "Basket #%d dir=%s pos=%.6f avg_entry=%.2f last_entry=%.2f mark=%.2f uPnL=%.4f levels=%d next=%.2f dist_to_add=%s tp=%s dist_to_tp=%s tp_pnl=%s openTPs=%d",
+                    "POS | basket=%s | dir=%-5s | pos=%7.4f | avg=%7.2f | last=%7.2f | mark=%7.2f | uPnL=%8.4f | lvl=%2d | next=%7.2f | add_dist=%7s | TP=%7s | tp_dist=%7s | tp_pnl=%8s | openTPs=%d",
                     self.state.basket_id,
-                    self.state.direction or "-",
+                    (self.state.direction or "-"),
                     position_qty,
                     avg_entry,
                     last_entry,
