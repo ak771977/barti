@@ -51,6 +51,11 @@ class BasketRecorder:
                 )
 
     def append(self, symbol: str, summary: dict) -> None:
+        max_volume = summary.get("max_volume_eth", 0.0)
+        max_volume_str = f"{max_volume:.6f}".rstrip("0").rstrip(".")
+        if not max_volume_str:
+            max_volume_str = "0"
+        worst_drawdown = abs(summary.get("worst_drawdown", 0.0))
         with open(self.path, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(
@@ -61,8 +66,8 @@ class BasketRecorder:
                     symbol,
                     summary.get("direction"),
                     summary.get("levels"),
-                    f"{summary.get('max_volume_eth', 0):.6f}",
-                    f"{summary.get('worst_drawdown', 0.0):.6f}",
+                    max_volume_str,
+                    f"{worst_drawdown:.6f}",
                     "" if summary.get("pnl") is None else f"{summary.get('pnl'):.2f}",
                 ]
             )
