@@ -87,6 +87,10 @@ class BinanceFuturesClient:
         params = {"symbol": symbol}
         return self._get("/fapi/v1/openOrders", params=params, signed=True)
 
+    def cancel_all_open_orders(self, symbol: str) -> Any:
+        params = {"symbol": symbol}
+        return self.session.delete(f"{self.base_url}/fapi/v1/allOpenOrders", params=self._sign(params), timeout=10)
+
     def place_market_order(
         self,
         symbol: str,

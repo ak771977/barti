@@ -329,6 +329,10 @@ class GridBollingerStrategy:
     def on_price(self, price: float) -> None:
         self.bb.add(price)
         bands: Optional[Tuple[float, float, float]] = self.bb.bands()
+        try:
+            open_orders = self.client.get_open_orders(self.cfg.name)
+        except Exception:
+            open_orders = []
         pos_info = self.client.get_position_info(self.cfg.name)
         position_qty = pos_info["positionAmt"]
         mark_price = pos_info.get("markPrice", price) or price
@@ -346,20 +350,15 @@ class GridBollingerStrategy:
         # Position snapshot for visibility
         if abs(position_qty) > 0:
             best_tp = None
-            ro_orders = []
-            try:
-                ro_orders = [
-                    o for o in self.client.get_open_orders(self.cfg.name)
-                    if str(o.get("reduceOnly", "false")).lower() == "true"
-                ]
-                if ro_orders:
-                    prices = [float(o.get("price", 0) or 0) for o in ro_orders]
-                    if self.state.direction == "long":
-                        best_tp = min(prices)
-                    else:
-                        best_tp = max(prices)
-            except Exception:
-                pass
+            ro_orders = [
+                o for o in open_orders if str(o.get("reduceOnly", "false")).lower() == "true"
+            ]
+            if ro_orders:
+                prices = [float(o.get("price", 0) or 0) for o in ro_orders]
+                if self.state.direction == "long":
+                    best_tp = min(prices)
+                else:
+                    best_tp = max(prices)
 
             dist = None
             if best_tp:
@@ -378,6 +377,29 @@ class GridBollingerStrategy:
                 f"{dist:.2f}" if dist is not None else "-",
                 len(ro_orders),
             )
+            # Ensure TP aligns with current config/size
+            try:
+                target_tp = self._tp_price(entry_price if entry_price > 0 else mark_price, abs(position_qty), self.state.direction or "long")
+                needs_replace = False
+                if len(ro_orders) != 1:
+                    needs_replace = True
+                else:
+                    o = ro_orders[0]
+                    oqty = float(o.get("origQty", 0) or 0)
+                    oprice = float(o.get("price", 0) or 0)
+                    if abs(oqty - abs(position_qty)) > self.cfg.min_qty_step / 2 or abs(oprice - target_tp) > self.cfg.price_tick_size:
+                        needs_replace = True
+                if needs_replace:
+                    self.log.info("Resetting TP to match current position/target.")
+                    try:
+                        self.client.cancel_all_open_orders(self.cfg.name)
+                    except Exception as exc:
+                        self.log.warning("Failed to cancel open orders: %s", exc)
+                    tp_side = "BUY" if self.state.direction == "short" else "SELL"
+                    resp = self.client.place_limit_tp(self.cfg.name, tp_side, abs(position_qty), target_tp)
+                    self.log.info("Placed TP qty=%.6f price=%.2f resp=%s", abs(position_qty), target_tp, resp)
+            except Exception as exc:
+                self.log.warning("Could not ensure TP placement: %s", exc)
         self._maybe_reset_state(position_qty)
         if bands is None:
             return
