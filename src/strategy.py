@@ -247,59 +247,55 @@ class GridBollingerStrategy:
         if self.state.levels_filled >= self.cfg.max_levels or spacing <= 0:
             return
         # Always anchor next entry exactly one spacing from last fill and only enter when we are beyond that distance.
-        while True:
-            if self.state.last_entry_price is None:
-                return
-            target_price = (
-                self.state.last_entry_price + spacing if self.state.direction == "short" else self.state.last_entry_price - spacing
-            )
-            self.state.next_entry_price = target_price
-            should_enter = False
-            if self.state.direction == "short" and price >= target_price:
-                should_enter = True
-            elif self.state.direction == "long" and price <= target_price:
-                should_enter = True
+        if self.state.last_entry_price is None:
+            return
+        target_price = (
+            self.state.last_entry_price + spacing if self.state.direction == "short" else self.state.last_entry_price - spacing
+        )
+        self.state.next_entry_price = target_price
+        should_enter = False
+        if self.state.direction == "short" and price >= target_price:
+            should_enter = True
+        elif self.state.direction == "long" and price <= target_price:
+            should_enter = True
 
-            if not should_enter:
-                self.state_store.save(self.state)
-                return
-            if self.state.levels_filled >= self.cfg.max_levels:
-                self.state_store.save(self.state)
-                return
-
-            level = self.state.levels_filled + 1
-            qty = level_qty(level, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
-            min_qty = round_up(self.cfg.min_notional_usd / price, self.cfg.min_qty_step)
-            if qty < min_qty:
-                self.log.info("Adjusted qty to meet min notional: %.6f -> %.6f", qty, min_qty)
-                qty = min_qty
-            side = "SELL" if self.state.direction == "short" else "BUY"
-            order, executed, entry_price = self._execute_market(side, qty, price)
-            try:
-                order_id = int(order.get("orderId"))
-                self.state.entry_order_ids.append(order_id)
-            except Exception:
-                pass
-            self.state.levels_filled = level
-            self.state.last_entry_price = entry_price
-            self.state.next_entry_price = entry_price + spacing if self.state.direction == "short" else entry_price - spacing
-            cumulative_qty = sum(
-                level_qty(i, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
-                for i in range(1, level + 1)
-            )
-            self.state.max_volume = max(self.state.max_volume, cumulative_qty)
-            self.log.info(
-                "Basket #%d extended %s lvl%d qty=%.6f at %.2f next_entry=%.2f resp=%s",
-                self.state.basket_id,
-                self.state.direction,
-                level,
-                qty,
-                entry_price,
-                self.state.next_entry_price,
-                order,
-            )
-            self._place_tp(entry_price, qty, self.state.direction, level=level)
+        if not should_enter or self.state.levels_filled >= self.cfg.max_levels:
             self.state_store.save(self.state)
+            return
+
+        level = self.state.levels_filled + 1
+        qty = level_qty(level, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
+        min_qty = round_up(self.cfg.min_notional_usd / price, self.cfg.min_qty_step)
+        if qty < min_qty:
+            self.log.info("Adjusted qty to meet min notional: %.6f -> %.6f", qty, min_qty)
+            qty = min_qty
+        side = "SELL" if self.state.direction == "short" else "BUY"
+        order, executed, entry_price = self._execute_market(side, qty, price)
+        try:
+            order_id = int(order.get("orderId"))
+            self.state.entry_order_ids.append(order_id)
+        except Exception:
+            pass
+        self.state.levels_filled = level
+        self.state.last_entry_price = entry_price
+        self.state.next_entry_price = entry_price + spacing if self.state.direction == "short" else entry_price - spacing
+        cumulative_qty = sum(
+            level_qty(i, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
+            for i in range(1, level + 1)
+        )
+        self.state.max_volume = max(self.state.max_volume, cumulative_qty)
+        self.log.info(
+            "Basket #%d extended %s lvl%d qty=%.6f at %.2f next_entry=%.2f resp=%s",
+            self.state.basket_id,
+            self.state.direction,
+            level,
+            qty,
+            entry_price,
+            self.state.next_entry_price,
+            order,
+        )
+        self._place_tp(entry_price, qty, self.state.direction, level=level)
+        self.state_store.save(self.state)
 
     def _ensure_basket_time_from_entries(self) -> None:
         if self.state.basket_open_ts is not None and self.state.basket_id:
@@ -724,8 +720,10 @@ class GridBollingerStrategy:
             if self.state.cooldown_until_ts and time.time() < self.state.cooldown_until_ts:
                 return
             if price > upper:
+                self.log.info("Entry signal: price %.2f > upper %.2f (start short)", price, upper)
                 self._start_position(price, "short")
             elif price < lower:
+                self.log.info("Entry signal: price %.2f < lower %.2f (start long)", price, lower)
                 self._start_position(price, "long")
             return
 

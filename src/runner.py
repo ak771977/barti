@@ -11,6 +11,34 @@ from .state import StateStore, BasketRecorder
 from .strategy import GridBollingerStrategy
 
 
+def _get_api_credentials(is_testnet: bool) -> tuple[str, str]:
+    if is_testnet:
+        api_key = os.getenv("BINANCE_TESTNET_API_KEY") or os.getenv("BINANCE_API_KEY_TESTNET")
+        api_secret = os.getenv("BINANCE_TESTNET_API_SECRET") or os.getenv("BINANCE_API_SECRET_TESTNET")
+        env_name = "testnet"
+    else:
+        api_key = (
+            os.getenv("BINANCE_LIVE_API_KEY")
+            or os.getenv("BINANCE_API_KEY_LIVE")
+            or os.getenv("BINANCE_API_KEY")
+        )
+        api_secret = (
+            os.getenv("BINANCE_LIVE_API_SECRET")
+            or os.getenv("BINANCE_API_SECRET_LIVE")
+            or os.getenv("BINANCE_API_SECRET")
+        )
+        env_name = "live"
+
+    if not api_key or not api_secret:
+        raise SystemExit(
+            f"Missing Binance {env_name} API credentials. "
+            "Set BINANCE_LIVE_API_KEY/BINANCE_LIVE_API_SECRET or "
+            "BINANCE_TESTNET_API_KEY/BINANCE_TESTNET_API_SECRET in the environment."
+        )
+
+    return api_key, api_secret
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Binance ETHUSDT grid bot")
     parser.add_argument("--config", default="config/config.json", help="Path to config file")
@@ -23,10 +51,7 @@ def main() -> None:
     env_label = "testnet" if cfg.exchange.testnet else "live"
     logger = setup_logging(cfg.log_dir, name=f"bot-{env_label}")
 
-    api_key = os.getenv("BINANCE_API_KEY")
-    api_secret = os.getenv("BINANCE_API_SECRET")
-    if not api_key or not api_secret:
-        raise SystemExit("BINANCE_API_KEY and BINANCE_API_SECRET must be set in the environment.")
+    api_key, api_secret = _get_api_credentials(cfg.exchange.testnet)
 
     client = BinanceFuturesClient(api_key, api_secret, cfg.exchange.base_url, cfg.exchange.recv_window)
     state_store = StateStore(cfg.state_file)

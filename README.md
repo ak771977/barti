@@ -8,10 +8,12 @@ Minimal Python bot for ETHUSDT perpetuals on Binance Futures with Bollinger-trig
    ./scripts/setup_venv.sh
    source .venv/bin/activate
    ```
-2. Set keys in a `.env` (or export env vars). Default config points to Binance Futures **testnet**; change `exchange.testnet` and `exchange.base_url` for live:
+2. Set keys in a `.env` (or export env vars). Default config points to Binance Futures **testnet**; change `exchange.testnet` and `exchange.base_url` for live. Keep both sets of keys and the bot will pick the right pair automatically based on `exchange.testnet`:
    ```
-   BINANCE_API_KEY=your_key
-   BINANCE_API_SECRET=your_secret
+   BINANCE_LIVE_API_KEY=your_live_key
+   BINANCE_LIVE_API_SECRET=your_live_secret
+   BINANCE_TESTNET_API_KEY=your_testnet_key
+   BINANCE_TESTNET_API_SECRET=your_testnet_secret
    ```
 3. Adjust `config/config.json` as needed (poll interval, grid spacing, qty scaling, TP, cooldown).
 4. Run (ensure venv is active):
