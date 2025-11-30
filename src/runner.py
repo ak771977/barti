@@ -1,6 +1,7 @@
 import argparse
 import os
 import time
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -39,22 +40,42 @@ def _get_api_credentials(is_testnet: bool) -> tuple[str, str]:
     return api_key, api_secret
 
 
+def _mask_credential(value: str) -> str:
+    if len(value) <= 8:
+        return value
+    return f"{value[:4]}...{value[-4:]}"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Binance ETHUSDT grid bot")
     parser.add_argument("--config", default="config/config.json", help="Path to config file")
+    parser.add_argument("--live", action="store_true", help="Force live Binance settings instead of the configured default")
+    parser.add_argument("--state-file", help="Override the persisted state file path")
     parser.add_argument("--drain", action="store_true", help="Drain mode: manage existing grid, no new entries")
     parser.add_argument("--seed", choices=["buy", "sell"], help="Force start a grid immediately at current price (buy=long, sell=short)")
     args = parser.parse_args()
 
     load_dotenv()
     cfg = load_config(args.config)
+    if args.live:
+        cfg.exchange.testnet = False
     env_label = "testnet" if cfg.exchange.testnet else "live"
     logger = setup_logging(cfg.log_dir, name=f"bot-{env_label}")
+    state_file = args.state_file or cfg.state_file
+    if args.state_file is None:
+        path = Path(state_file)
+        state_file = str(path.with_name(f"{env_label}-state{path.suffix}"))
 
     api_key, api_secret = _get_api_credentials(cfg.exchange.testnet)
+    if env_label == "live":
+        logger.info(
+            "Live credentials: key=%s secret=%s",
+            _mask_credential(api_key),
+            _mask_credential(api_secret),
+        )
 
     client = BinanceFuturesClient(api_key, api_secret, cfg.exchange.base_url, cfg.exchange.recv_window)
-    state_store = StateStore(cfg.state_file)
+    state_store = StateStore(state_file)
     baskets_path = f"state/baskets-{env_label}-{cfg.symbol.name}.csv"
     basket_recorder = BasketRecorder(baskets_path)
 

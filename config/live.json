@@ -2,9 +2,9 @@
   "poll_interval_seconds": 10,
   "log_dir": "logs",
   "exchange": {
-    "base_url": "https://testnet.binancefuture.com",
+    "base_url": "https://fapi.binance.com",
     "recv_window": 5000,
-    "testnet": true
+    "testnet": false
   },
   "symbol": {
     "name": "ETHUSDT",
@@ -14,7 +14,7 @@
     "price_tick_size": 0.01,
     "max_levels": 10,
     "grid_spacing_usd": 5.0,
-    "target_profit_usd": 9,
+    "target_profit_usd": 7.5,
     "lot_size": 1.0,
     "min_qty_step": 0.001,
     "min_notional_usd": 20.0,
@@ -29,12 +29,12 @@
     },
     "cooldown_minutes": 0
   },
-  "state_file": "state/state.json",
+  "state_file": "state/live_state.json",
   "drain_mode": false,
   "balance_log_interval_seconds": 60,
   "session_limits": {
     "max_grids": 0,
     "max_gain_usd": 0.0
   },
-  "log_throttle_seconds": 300
+  "log_throttle_seconds": 60
 }

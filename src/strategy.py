@@ -110,7 +110,7 @@ class GridBollingerStrategy:
             "Reconstructed grid from live position qty=%.6f as level %d direction %s", position_qty, level, direction
         )
         self.state_store.save(self.state)
-        self._last_fill_price = entry_price
+        self._last_fill_price = inferred_entry
         self._waiting_for_break = True
 
     def _tp_price(self, entry_price: float, qty: float, direction: str) -> float:

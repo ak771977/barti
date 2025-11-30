@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 SESSION_NAME="${TMUX_SESSION:-gridbot}"
-RUN_CMD="source .venv/bin/activate && python -m src.runner $* || { echo 'runner exited with code $?'; sleep 999999; }"
+ARG_STRING=$(printf ' %q' "$@")
+RUN_CMD="source .venv/bin/activate && python -m src.runner${ARG_STRING} || { echo 'runner exited with code $?'; sleep 999999; }"
 
 if [ ! -d ".venv" ]; then
   echo ".venv not found. Run ./scripts/setup_venv.sh first." >&2
