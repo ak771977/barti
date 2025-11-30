@@ -391,6 +391,74 @@ class GridBollingerStrategy:
         self.log.info(header)
         self.log.info(row)
 
+    def _collect_entry_trades(self) -> list:
+        trades = []
+        if not self.state.entry_order_ids and self.state.basket_open_ts is None:
+            return trades
+        try:
+            raw = self.client.get_user_trades(self.cfg.name, limit=50)
+        except Exception:
+            return trades
+        for t in raw:
+            try:
+                oid = int(t.get("orderId", 0))
+                ts_ms = int(t.get("time", 0))
+                price = float(t.get("price", 0) or 0)
+                qty = float(t.get("qty", 0) or 0)
+                fee = float(t.get("commission", 0) or 0)
+            except Exception:
+                continue
+            if self.state.entry_order_ids and oid not in self.state.entry_order_ids:
+                continue
+            if self.state.basket_open_ts and ts_ms / 1000 < self.state.basket_open_ts - 1:
+                continue
+            trades.append({"oid": oid, "time": ts_ms, "price": price, "qty": qty, "fee": fee})
+        trades.sort(key=lambda x: x["time"])
+        return trades
+
+    def _log_basket_panel(
+        self,
+        qty: float,
+        avg_entry: float,
+        last_entry: float,
+        mark_price: float,
+        direction: str,
+        tp_price: float,
+        tp_pnl: float,
+    ) -> None:
+        trades = self._collect_entry_trades()
+        if qty <= 0 or not direction:
+            return
+        total_fee = sum(t["fee"] for t in trades) if trades else 0.0
+        next_add = last_entry - self.cfg.grid_spacing_usd if direction == "long" else last_entry + self.cfg.grid_spacing_usd
+        lines = []
+        header = f"ETH_PERP BASKET | {len(trades)} Orders | {qty:.3f} {self.cfg.symbol.name[:-4]} | Avg: {avg_entry:,.2f}"
+        border = "+" + "-" * len(header) + "+"
+        lines.append(border)
+        lines.append("| " + header + " |")
+        lines.append(border)
+        lines.append(" Order # | Time     | Price    | Size      | Fee")
+        lines.append("---------+----------+----------+-----------+-----------")
+        for idx, t in enumerate(trades, start=1):
+            timestr = time.strftime("%H:%M:%S", time.gmtime(t["time"] / 1000)) if t["time"] else "-"
+            lines.append(
+                f" {idx:<7} | {timestr:<8} | {t['price']:>8.2f} | {t['qty']:>7.3f}   | {t['fee']:>7.4f}"
+            )
+        lines.append("---------+----------+----------+-----------+-----------")
+        lines.append(f" TOTAL   |          |          | {qty:>7.3f}   | {total_fee:>7.4f}")
+        lines.append("")
+        pnl = (mark_price - avg_entry) * qty if direction == "long" else (avg_entry - mark_price) * qty
+        tp_dist = tp_price - mark_price if direction == "long" else mark_price - tp_price
+        add_dist = next_add - mark_price if direction == "long" else mark_price - next_add
+        lines.append(f" Avg Price    | {avg_entry:>8.2f}")
+        lines.append(f" Break Even   | {avg_entry + (total_fee / qty if qty else 0):>8.2f}")
+        lines.append(f" Mark         | {mark_price:>8.2f}")
+        lines.append(f" Next Add     | {next_add:>8.2f} (dist {add_dist:>.2f})")
+        lines.append(f" PnL          | {pnl:>8.4f} USDT")
+        lines.append(f" TP           | {tp_price:>8.2f} (pnl {tp_pnl:>.4f}, dist {tp_dist:>.2f})")
+        for line in lines:
+            self.log.info(line)
+
     def _maybe_reset_state(self, position_qty: float) -> None:
         if abs(position_qty) < 1e-8 and self.state.direction:
             pnl = None
@@ -490,6 +558,7 @@ class GridBollingerStrategy:
             orders_throttle = getattr(self, "_orders_log_throttle", throttle)
             fills_throttle = getattr(self, "_fills_log_throttle", orders_throttle)
             summary_throttle = getattr(self, "_summary_log_throttle", throttle)
+            panel_throttle = getattr(self, "_panel_log_throttle", summary_throttle)
             if now - getattr(self, "_last_pos_log", 0) >= throttle:
                 self._last_pos_log = now
                 add_price = self.state.next_entry_price or 0.0
@@ -523,6 +592,12 @@ class GridBollingerStrategy:
                 self._last_summary_log = now
                 last_entry = self.state.last_entry_price or entry_price or mark_price
                 self._log_basket_summary(abs(position_qty), entry_price if entry_price > 0 else mark_price, last_entry, mark_price, self.state.direction)
+            if now - getattr(self, "_last_panel_log", 0) >= panel_throttle:
+                self._last_panel_log = now
+                last_entry = self.state.last_entry_price or entry_price or mark_price
+                target_tp = self._tp_price(entry_price if entry_price > 0 else mark_price, abs(position_qty), self.state.direction or "long")
+                tp_val = self._tp_profit(entry_price if entry_price > 0 else mark_price, target_tp, abs(position_qty), self.state.direction or "long")
+                self._log_basket_panel(abs(position_qty), entry_price if entry_price > 0 else mark_price, last_entry, mark_price, self.state.direction, target_tp, tp_val)
             # Ensure TP aligns with current config/size
             try:
                 target_tp = self._tp_price(entry_price if entry_price > 0 else mark_price, abs(position_qty), self.state.direction or "long")
