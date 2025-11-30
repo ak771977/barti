@@ -59,10 +59,18 @@ class GridBollingerStrategy:
                 self._waiting_for_break = False
                 self._last_fill_price = None
             return
-        if self.state.direction:
-            return
 
         direction = "long" if position_qty > 0 else "short"
+        if self.state.direction and self.state.direction != direction:
+            self.log.warning(
+                "Stored grid direction '%s' conflicts with live position ('%s'); clearing saved state.",
+                self.state.direction,
+                direction,
+            )
+            self.state.reset()
+            self.state_store.save(self.state)
+        if self.state.direction:
+            return
         self.state.direction = direction
         abs_qty = abs(position_qty)
         level = 0
