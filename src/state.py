@@ -30,25 +30,27 @@ class StateStore:
 
 
 class BasketRecorder:
+    HEADER = [
+        "open_at",
+        "closed_at",
+        "basket_id",
+        "symbol",
+        "direction",
+        "levels",
+        "max_volume_eth",
+        "margin_used",
+        "margin_level",
+        "worst_drawdown",
+        "pnl",
+    ]
+
     def __init__(self, path: str) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        header = [
-            "open_at",
-            "closed_at",
-            "basket_id",
-            "symbol",
-            "direction",
-            "levels",
-            "max_volume_eth",
-            "margin_used",
-            "worst_drawdown",
-            "pnl",
-        ]
         if not self.path.exists():
             with open(self.path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow(header)
+                writer.writerow(self.HEADER)
             return
 
         try:
@@ -56,17 +58,17 @@ class BasketRecorder:
                 reader = list(csv.reader(f))
         except Exception:
             reader = []
-        if reader and reader[0] == header:
+        if reader and reader[0] == self.HEADER:
             return
 
-        # Rewrite file with new header, keeping existing rows and adding a blank column for margin.
         data_rows = reader[1:] if reader else []
+        recovered_header = reader[0] if reader else []
         with open(self.path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(header)
+            writer.writerow(self.HEADER)
             for row in data_rows:
-                # Insert placeholder for margin_used between max_volume_eth and worst_drawdown.
-                new_row = row[:7] + [""] + row[7:]
+                old_row_map = dict(zip(recovered_header, row))
+                new_row = [old_row_map.get(col, "") for col in self.HEADER]
                 writer.writerow(new_row)
 
     def append(self, symbol: str, summary: dict) -> None:
@@ -87,6 +89,7 @@ class BasketRecorder:
                     summary.get("levels"),
                     max_volume_str,
                     f"{summary.get('margin_used', 0.0):.2f}",
+                    f"{summary.get('margin_level', 0.0):.2f}",
                     f"{worst_drawdown:.6f}",
                     "" if summary.get("pnl") is None else f"{summary.get('pnl'):.2f}",
                 ]
