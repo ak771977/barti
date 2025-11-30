@@ -832,9 +832,23 @@ class GridBollingerStrategy:
             if self.state.cooldown_until_ts and time.time() < self.state.cooldown_until_ts:
                 return
             if price > upper:
+                self.log.info(
+                    "Entry check snapshot | price=%.2f lower=%.2f mid=%.2f upper=%.2f dir=short",
+                    price,
+                    lower,
+                    mid,
+                    upper,
+                )
                 self.log.info("Entry signal: price %.2f > upper %.2f (start short)", price, upper)
                 self._start_position(price, "short")
             elif price < lower:
+                self.log.info(
+                    "Entry check snapshot | price=%.2f lower=%.2f mid=%.2f upper=%.2f dir=long",
+                    price,
+                    lower,
+                    mid,
+                    upper,
+                )
                 self.log.info("Entry signal: price %.2f < lower %.2f (start long)", price, lower)
                 self._start_position(price, "long")
             return
