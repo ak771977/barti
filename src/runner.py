@@ -145,15 +145,15 @@ def main() -> None:
                     account = client.get_account()
                     total_margin_balance = float(account.get("totalMarginBalance", 0))
                     available = float(account.get("availableBalance", 0))
-                    maint = float(account.get("totalMaintMargin", 0))
-                    margin_ratio = maint / total_margin_balance if total_margin_balance > 0 else 0.0
-                    logger.info(
-                        "Balance: total=%.2f available=%.2f maint=%.2f margin_ratio=%.3f",
-                        total_margin_balance,
-                        available,
-                        maint,
-                        margin_ratio,
-                    )
+            maint = float(account.get("totalMaintMargin", 0))
+            account_margin_ratio = maint / total_margin_balance if total_margin_balance > 0 else 0.0
+            logger.info(
+                "Balance: total=%.2f available=%.2f maint=%.2f account_margin_ratio=%.3f",
+                total_margin_balance,
+                available,
+                maint,
+                account_margin_ratio,
+            )
                 except BinanceAPIError as exc:
                     logger.error("Failed to fetch account info: %s", exc)
                 last_balance_log = now
