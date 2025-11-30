@@ -67,6 +67,8 @@ class BinanceFuturesClient:
             "entryPrice": float(pos.get("entryPrice", 0)),
             "markPrice": float(pos.get("markPrice", 0)),
             "unRealizedProfit": float(pos.get("unRealizedProfit", 0)),
+            "initialMargin": float(pos.get("initialMargin", 0)),
+            "positionInitialMargin": float(pos.get("positionInitialMargin", 0)),
         }
 
     def set_leverage(self, symbol: str, leverage: int) -> None:

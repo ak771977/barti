@@ -45,6 +45,7 @@ class BasketRecorder:
                         "direction",
                         "levels",
                         "max_volume_eth",
+                        "margin_used",
                         "worst_drawdown",
                         "pnl",
                     ]
@@ -59,15 +60,16 @@ class BasketRecorder:
         with open(self.path, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(
-                [
-                    summary.get("open_at"),
-                    datetime.utcnow().isoformat(),
-                    summary.get("basket_id"),
-                    symbol,
-                    summary.get("direction"),
-                    summary.get("levels"),
-                    max_volume_str,
-                    f"{worst_drawdown:.6f}",
-                    "" if summary.get("pnl") is None else f"{summary.get('pnl'):.2f}",
-                ]
-            )
+                    [
+                        summary.get("open_at"),
+                        datetime.utcnow().isoformat(),
+                        summary.get("basket_id"),
+                        symbol,
+                        summary.get("direction"),
+                        summary.get("levels"),
+                        max_volume_str,
+                        f"{summary.get('margin_used', 0.0):.2f}",
+                        f"{worst_drawdown:.6f}",
+                        "" if summary.get("pnl") is None else f"{summary.get('pnl'):.2f}",
+                    ]
+                )

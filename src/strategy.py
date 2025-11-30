@@ -35,6 +35,7 @@ class GridBollingerStrategy:
         self._waiting_for_break = False
         self._last_fill_price: Optional[float] = None
         self._entry_in_progress = False
+        self._last_margin_used: float = 0.0
 
     def seed_indicator(self, closes) -> None:
         for close in closes[-self.cfg.bollinger.period :]:
@@ -562,17 +563,7 @@ class GridBollingerStrategy:
         lines.append(f" Next Add     | {next_add:>8.2f} (dist {add_dist:>.2f})")
         lines.append(f" PnL          | {pnl:>8.4f} USDT")
         lines.append(f" TP           | {tp_price:>8.2f} (pnl {tp_pnl:>.4f}, dist {tp_dist:>.2f})")
-        margin_used = 0.0
-        try:
-            account = self.client.get_account()
-            for pos in account.get("positions", []):
-                if pos.get("symbol") != self.cfg.name:
-                    continue
-                margin_val = pos.get("initialMargin") or pos.get("positionInitialMargin")
-                margin_used = float(margin_val or 0)
-                break
-        except Exception:
-            margin_used = 0.0
+        margin_used = self._last_margin_used
         lines.append(f" Margin Used  | {margin_used:>8.2f} USDT")
         for line in lines:
             self.log.info(line)
@@ -591,6 +582,7 @@ class GridBollingerStrategy:
                 "basket_id": self.state.basket_id,
                 "levels": self.state.levels_filled,
                 "max_volume_eth": self.state.max_volume,
+                "margin_used": self._last_margin_used,
                 "worst_drawdown": self.state.worst_drawdown,
                 "pnl": pnl,
                 "direction": self.state.direction,
@@ -599,10 +591,11 @@ class GridBollingerStrategy:
                 ),
             }
             self.log.info(
-                "Basket #%d closed. Levels=%d MaxVol=%.6f WorstDD=%.4f PnL=%s",
+                "Basket #%d closed. Levels=%d MaxVol=%.6f Margin=%.2f WorstDD=%.4f PnL=%s",
                 summary["basket_id"],
                 summary["levels"],
                 summary["max_volume_eth"],
+                summary["margin_used"],
                 summary["worst_drawdown"],
                 f"{summary['pnl']:.2f}" if summary["pnl"] is not None else "unknown",
             )
@@ -620,6 +613,7 @@ class GridBollingerStrategy:
             self._last_fill_price = None
             self._waiting_for_break = False
             self._entry_in_progress = False
+            self._last_margin_used = 0.0
             if self.cfg.cooldown_minutes > 0:
                 self.state.cooldown_until_ts = time.time() + self.cfg.cooldown_minutes * 60
                 self.log.info("Cooldown active for %d minutes", self.cfg.cooldown_minutes)
@@ -637,6 +631,9 @@ class GridBollingerStrategy:
         mark_price = float(pos_info.get("markPrice", price) or price)
         unrealized = float(pos_info.get("unRealizedProfit", 0.0) or 0.0)
         entry_price = float(pos_info.get("entryPrice", 0.0) or 0.0)
+        margin_used = pos_info.get("initialMargin") or pos_info.get("positionInitialMargin") or 0.0
+        if abs(position_qty) > 0:
+            self._last_margin_used = margin_used
         self._ensure_basket_time_from_entries()
         if not self.state.entry_order_ids and abs(position_qty) > 0 and self.state.direction:
             if self._populate_entries_from_trades(abs(position_qty), self.state.direction):
