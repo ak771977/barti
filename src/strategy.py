@@ -379,7 +379,8 @@ class GridBollingerStrategy:
             profit_at_tp = None
             if best_tp:
                 profit_at_tp = self._tp_profit(entry_price if entry_price > 0 else mark_price, best_tp, abs(position_qty), self.state.direction or "long")
-            if now - getattr(self, "_last_pos_log", 0) >= self.cfg.log_throttle_seconds:
+            throttle = getattr(self, "_log_throttle", 60)
+            if now - getattr(self, "_last_pos_log", 0) >= throttle:
                 self._last_pos_log = now
                 add_price = self.state.next_entry_price or 0.0
                 add_dist = add_price - mark_price if self.state.direction == "long" else mark_price - add_price if add_price else None

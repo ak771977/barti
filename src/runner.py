@@ -81,6 +81,7 @@ def main() -> None:
         on_basket_close=on_basket_close,
         basket_recorder=basket_recorder,
     )
+    strat._log_throttle = cfg.log_throttle_seconds
 
     try:
         klines = client.get_klines(cfg.symbol.name, cfg.symbol.timeframe, limit=max(cfg.symbol.bollinger.period, 120))
