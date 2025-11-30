@@ -570,6 +570,8 @@ class GridBollingerStrategy:
                 margin_used = fetched_margin
                 self._last_margin_used = fetched_margin
         lines.append(f" Margin Used  | {margin_used:>8.2f} USDT")
+        worst_dd = abs(self.state.worst_drawdown)
+        lines.append(f" Worst DD    | {worst_dd:>8.4f} USDT")
         for line in lines:
             self.log.info(line)
 
