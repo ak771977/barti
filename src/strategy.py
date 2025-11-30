@@ -400,24 +400,20 @@ class GridBollingerStrategy:
                 continue
         if not trades:
             return False
-        trades.sort(key=lambda x: x["time"])  # chronological
+        trades.sort(key=lambda x: x["time"], reverse=True)  # newest first
         net = 0.0
-        last_flat_idx = -1
-        for idx, t in enumerate(trades):
-            delta = t["qty"] if t["buyer"] else -t["qty"]
+        picked: list[dict] = []
+        tol = max(1e-6, position_qty * 0.01)
+        for t in trades:
+            delta = t["qty"] if (direction == "long" and t["buyer"]) or (direction == "short" and not t["buyer"]) else -t["qty"]
             net += delta
-            if abs(net) < 1e-9:
-                last_flat_idx = idx
-        active_trades = trades[last_flat_idx + 1 :] if last_flat_idx + 1 < len(trades) else trades
-        if not active_trades:
+            picked.append(t)
+            if net >= position_qty - tol:
+                break
+        if net < position_qty - tol:
             return False
-        # Verify net of active trades matches current position (within tolerance)
-        net_active = 0.0
-        for t in active_trades:
-            net_active += t["qty"] if t["buyer"] else -t["qty"]
-        if abs(net_active - position_qty) > max(1e-6, position_qty * 0.05):
-            return False
-        entry_trades = [t for t in active_trades if (t["buyer"] if direction == "long" else not t["buyer"])]
+        picked.reverse()  # chronological for display
+        entry_trades = [t for t in picked if (t["buyer"] if direction == "long" else not t["buyer"])]
         if not entry_trades:
             return False
         self.state.entry_order_ids = list({t["oid"] for t in entry_trades})
