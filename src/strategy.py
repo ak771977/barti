@@ -37,7 +37,7 @@ class GridBollingerStrategy:
         for close in closes[-self.cfg.bollinger.period :]:
             self.bb.add(float(close))
 
-    def reconcile_position(self, price: float, position_qty: float) -> None:
+    def reconcile_position(self, price: float, position_qty: float, open_orders: Optional[list] = None) -> None:
         if abs(position_qty) < 1e-8:
             if self.state.direction:
                 self.log.info("No position on exchange; clearing saved grid state.")
@@ -60,6 +60,11 @@ class GridBollingerStrategy:
                 self.cfg.grid.multiplier,
                 self.cfg.min_qty_step,
             )
+        # If we have open reduce-only orders, use them to infer depth too
+        if open_orders:
+            ro_count = sum(1 for o in open_orders if str(o.get("reduceOnly", "false")).lower() == "true")
+            if ro_count > level:
+                level = min(ro_count, self.cfg.max_levels)
         self.state.direction = direction
         self.state.levels_filled = level
         self.state.last_entry_price = price

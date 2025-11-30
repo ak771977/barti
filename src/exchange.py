@@ -83,6 +83,10 @@ class BinanceFuturesClient:
     def get_account(self) -> Dict[str, Any]:
         return self._get("/fapi/v2/account", signed=True)
 
+    def get_open_orders(self, symbol: str) -> Any:
+        params = {"symbol": symbol}
+        return self._get("/fapi/v1/openOrders", params=params, signed=True)
+
     def place_market_order(
         self,
         symbol: str,
