@@ -6,6 +6,8 @@ cd "$ROOT_DIR"
 
 SESSION_NAME="${TMUX_SESSION:-gridbot}"
 RUN_CMD="source .venv/bin/activate && python -m src.runner $*"
+TMUX_TMPDIR="${TMUX_TMPDIR:-$ROOT_DIR/.tmux-tmp}"
+mkdir -p "$TMUX_TMPDIR"
 
 if [ ! -d ".venv" ]; then
   echo ".venv not found. Run ./scripts/setup_venv.sh first." >&2
@@ -18,5 +20,5 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   exit 0
 fi
 
-tmux new-session -d -s "$SESSION_NAME" "$SHELL -lc '$RUN_CMD'"
+TMUX_TMPDIR="$TMUX_TMPDIR" tmux new-session -d -s "$SESSION_NAME" "$SHELL -lc '$RUN_CMD'"
 echo "Started tmux session '$SESSION_NAME'. Attach with: tmux attach -t $SESSION_NAME"
