@@ -14,7 +14,7 @@
     "price_tick_size": 0.01,
     "max_levels": 10,
     "grid_spacing_usd": 5.0,
-    "target_profit_usd": 9.0,
+    "target_profit_usd": 9,
     "lot_size": 1.0,
     "min_qty_step": 0.001,
     "min_notional_usd": 20.0,

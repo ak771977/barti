@@ -26,7 +26,7 @@ Minimal Python bot for ETHUSDT perpetuals on Binance Futures with Bollinger-trig
 - 1m Bollinger Bands (period 100, std 2.0). Short on price breaching upper band; long on price breaching lower band (no close confirmation).
 - Grid spacing: market orders every `grid_spacing_usd` move deeper into the trade until `max_levels`.
 - Qty scaling: start at `base_qty`, repeat for `repeat_every` levels, then multiply by `multiplier` and round up to `min_qty_step`.
-- TP per fill: limit reduce-only order placed immediately with `target_profit_usd` per lot.
+- TP per fill: limit reduce-only order placed immediately with `target_profit_usd` per ETH (price offset is fixed, so actual TP profit scales linearly with the filled quantity).
 
 ## Notes
 - Leverage and margin mode (CROSS/ISOLATED) are set on startup (`leverage`, `margin_mode`).

@@ -114,9 +114,9 @@ class GridBollingerStrategy:
         self._waiting_for_break = True
 
     def _tp_price(self, entry_price: float, qty: float, direction: str) -> float:
-        lots = max(qty / self.cfg.lot_size, 1e-9)
-        target = lots * self.cfg.target_profit_usd
-        delta = target / qty
+        if qty <= 0:
+            return entry_price
+        delta = self.cfg.target_profit_usd
         if direction == "short":
             raw = entry_price - delta
         else:
