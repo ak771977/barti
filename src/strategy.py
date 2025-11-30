@@ -753,17 +753,20 @@ class GridBollingerStrategy:
 
         lower, mid, upper = bands
         if abs(position_qty) < 1e-8:
-            self.log.info(
-                "Tick price=%.2f BB: lower=%.2f mid=%.2f upper=%.2f dir=%s levels=%d next=%.2f cooldown=%s",
-                price,
-                lower,
-                mid,
-                upper,
-                self.state.direction or "-",
-                self.state.levels_filled,
-                self.state.next_entry_price or 0.0,
-                f"{int(self.state.cooldown_until_ts - time.time())}s" if self.state.cooldown_until_ts else "none",
-            )
+            tick_throttle = getattr(self, "_tick_log_throttle", getattr(self, "_log_throttle", 60))
+            if now - getattr(self, "_last_tick_log", 0) >= tick_throttle:
+                self._last_tick_log = now
+                self.log.info(
+                    "Tick price=%.2f BB: lower=%.2f mid=%.2f upper=%.2f dir=%s levels=%d next=%.2f cooldown=%s",
+                    price,
+                    lower,
+                    mid,
+                    upper,
+                    self.state.direction or "-",
+                    self.state.levels_filled,
+                    self.state.next_entry_price or 0.0,
+                    f"{int(self.state.cooldown_until_ts - time.time())}s" if self.state.cooldown_until_ts else "none",
+                )
 
         if not self.state.direction:
             if self.drain_mode:
