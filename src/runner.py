@@ -15,6 +15,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Binance ETHUSDT grid bot")
     parser.add_argument("--config", default="config/config.json", help="Path to config file")
     parser.add_argument("--drain", action="store_true", help="Drain mode: manage existing grid, no new entries")
+    parser.add_argument("--seed", choices=["buy", "sell"], help="Force start a grid immediately at current price (buy=long, sell=short)")
     args = parser.parse_args()
 
     load_dotenv()
@@ -89,12 +90,17 @@ def main() -> None:
     except BinanceAPIError as exc:
         logger.error("Could not fetch klines to seed indicator: %s", exc)
 
+    price = None
     try:
         price = client.get_price(cfg.symbol.name)
         pos = client.get_position_info(cfg.symbol.name)
         strat.reconcile_position(price, pos.get("positionAmt", 0.0))
     except BinanceAPIError as exc:
         logger.error("Failed to reconcile position on startup: %s", exc)
+
+    if args.seed and price:
+        direction = "long" if args.seed == "buy" else "short"
+        strat.force_seed(direction, price)
 
     logger.info("Starting loop for %s; poll every %ss", cfg.symbol.name, cfg.poll_interval_seconds)
     last_balance_log = 0.0

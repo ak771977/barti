@@ -245,3 +245,10 @@ class GridBollingerStrategy:
 
     def set_drain_mode(self, drain: bool) -> None:
         self.drain_mode = drain
+
+    def force_seed(self, direction: str, price: float) -> None:
+        if self.state.direction:
+            self.log.info("Cannot seed; grid already active (direction=%s).", self.state.direction)
+            return
+        self.log.info("Force seeding grid: %s at price %.2f", direction, price)
+        self._start_position(price, direction)

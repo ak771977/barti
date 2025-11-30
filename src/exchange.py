@@ -1,7 +1,7 @@
 import hashlib
 import hmac
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List, Tuple
 
 import requests
 
@@ -19,28 +19,28 @@ class BinanceFuturesClient:
         self.session = requests.Session()
         self.session.headers.update({"X-MBX-APIKEY": api_key})
 
-    def _sign(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _sign(self, params: Dict[str, Any]) -> List[Tuple[str, Any]]:
+        params = dict(params)  # copy
         params["timestamp"] = int(time.time() * 1000)
         params["recvWindow"] = self.recv_window
-        query = "&".join([f"{k}={params[k]}" for k in sorted(params)])
+        items = sorted(params.items())
+        query = "&".join([f"{k}={v}" for k, v in items])
         signature = hmac.new(self.api_secret, query.encode(), hashlib.sha256).hexdigest()
-        params["signature"] = signature
-        return params
+        items.append(("signature", signature))
+        return items
 
     def _get(self, path: str, params: Optional[Dict[str, Any]] = None, signed: bool = False) -> Any:
         params = params or {}
-        if signed:
-            params = self._sign(params)
-        resp = self.session.get(f"{self.base_url}{path}", params=params, timeout=10)
+        signed_params = self._sign(params) if signed else params
+        resp = self.session.get(f"{self.base_url}{path}", params=signed_params, timeout=10)
         if resp.status_code != 200:
             raise BinanceAPIError(f"GET {path} failed: {resp.status_code} {resp.text}")
         return resp.json()
 
     def _post(self, path: str, params: Optional[Dict[str, Any]] = None, signed: bool = True) -> Any:
         params = params or {}
-        if signed:
-            params = self._sign(params)
-        resp = self.session.post(f"{self.base_url}{path}", params=params, timeout=10)
+        signed_params = self._sign(params) if signed else params
+        resp = self.session.post(f"{self.base_url}{path}", params=signed_params, timeout=10)
         if resp.status_code != 200:
             raise BinanceAPIError(f"POST {path} failed: {resp.status_code} {resp.text}")
         return resp.json()
@@ -74,7 +74,10 @@ class BinanceFuturesClient:
         self._post("/fapi/v1/leverage", params=params)
 
     def set_margin_mode(self, symbol: str, margin_mode: str) -> None:
-        params = {"symbol": symbol, "marginType": margin_mode.upper()}
+        mode = margin_mode.upper()
+        if mode == "CROSS":
+            mode = "CROSSED"
+        params = {"symbol": symbol, "marginType": mode}
         self._post("/fapi/v1/marginType", params=params)
 
     def get_account(self) -> Dict[str, Any]:
