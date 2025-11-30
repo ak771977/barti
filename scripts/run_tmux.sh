@@ -20,5 +20,13 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
   exit 0
 fi
 
-TMUX_TMPDIR="$TMUX_TMPDIR" tmux new-session -d -s "$SESSION_NAME" "$SHELL -lc '$RUN_CMD'"
-echo "Started tmux session '$SESSION_NAME'. Attach with: tmux attach -t $SESSION_NAME"
+if TMUX_TMPDIR="$TMUX_TMPDIR" tmux new-session -d -s "$SESSION_NAME" "$SHELL -lc '$RUN_CMD'"; then
+  echo "Started tmux session '$SESSION_NAME'. Attach with: tmux attach -t $SESSION_NAME"
+  exit 0
+fi
+
+echo "tmux unavailable here; falling back to nohup background process." >&2
+LOG_OUT="${ROOT_DIR}/logs/runner-stdout.log"
+mkdir -p "$(dirname "$LOG_OUT")"
+nohup bash -lc "$RUN_CMD" >"$LOG_OUT" 2>&1 &
+echo "Started background process with nohup. Tail logs via: tail -f $LOG_OUT"
