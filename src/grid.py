@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, List
 
 from .utils import round_up
 
@@ -16,6 +16,8 @@ class GridState:
     max_volume: float = 0.0
     worst_drawdown: float = 0.0  # negative values represent drawdown
     basket_open_ts: Optional[float] = None
+    entry_order_ids: List[int] = field(default_factory=list)
+    tp_order_ids: List[int] = field(default_factory=list)
 
     def reset(self) -> None:
         self.direction = None
@@ -28,6 +30,8 @@ class GridState:
         self.max_volume = 0.0
         self.worst_drawdown = 0.0
         self.basket_open_ts = None
+        self.entry_order_ids = []
+        self.tp_order_ids = []
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -41,6 +45,8 @@ class GridState:
             "max_volume": self.max_volume,
             "worst_drawdown": self.worst_drawdown,
             "basket_open_ts": self.basket_open_ts,
+            "entry_order_ids": self.entry_order_ids,
+            "tp_order_ids": self.tp_order_ids,
         }
 
     @staticmethod
@@ -56,6 +62,8 @@ class GridState:
             max_volume=float(data.get("max_volume", 0.0)),
             worst_drawdown=float(data.get("worst_drawdown", 0.0)),
             basket_open_ts=data.get("basket_open_ts"),
+            entry_order_ids=[int(o) for o in data.get("entry_order_ids", [])],
+            tp_order_ids=[int(o) for o in data.get("tp_order_ids", [])],
         )
 
 

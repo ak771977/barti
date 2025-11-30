@@ -99,7 +99,7 @@ class GridBollingerStrategy:
             raw = entry_price + delta
         return round_to_step(raw, self.cfg.price_tick_size)
 
-    def _place_tp(self, entry_price: float, qty: float, direction: str, level: int) -> None:
+    def _place_tp(self, entry_price: float, qty: float, direction: str, level: int) -> dict:
         tp_price = self._tp_price(entry_price, qty, direction)
         side = "BUY" if direction == "short" else "SELL"
         resp = self.client.place_limit_tp(self.cfg.name, side, qty, tp_price)
@@ -112,6 +112,12 @@ class GridBollingerStrategy:
             tp_price,
             resp,
         )
+        try:
+            order_id = int(resp.get("orderId"))
+            self.state.tp_order_ids.append(order_id)
+        except Exception:
+            pass
+        return resp
 
     def _execute_market(self, side: str, qty: float, price: float) -> tuple[dict, float, float]:
         """
@@ -165,6 +171,17 @@ class GridBollingerStrategy:
         except Exception:
             wallet = None
         order, executed, entry_price = self._execute_market(side, qty, price)
+        order_ts_ms = order.get("updateTime") or order.get("transactTime")
+        if order_ts_ms:
+            try:
+                self.state.basket_open_ts = order_ts_ms / 1000
+            except Exception:
+                pass
+        try:
+            order_id = int(order.get("orderId"))
+            self.state.entry_order_ids.append(order_id)
+        except Exception:
+            pass
         self.state.direction = direction
         self.state.last_entry_price = entry_price
         self.state.levels_filled = 1
@@ -225,6 +242,11 @@ class GridBollingerStrategy:
                 qty = min_qty
             side = "SELL" if self.state.direction == "short" else "BUY"
             order, executed, entry_price = self._execute_market(side, qty, price)
+            try:
+                order_id = int(order.get("orderId"))
+                self.state.entry_order_ids.append(order_id)
+            except Exception:
+                pass
             self.state.levels_filled = level
             self.state.last_entry_price = entry_price
             self.state.next_entry_price = entry_price + spacing if self.state.direction == "short" else entry_price - spacing
