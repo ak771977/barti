@@ -84,6 +84,17 @@ class GridBollingerStrategy:
             if self.state.basket_open_ts is None:
                 self.state.basket_open_ts = now_ts
             self.state.basket_id = self._new_basket_id(self.state.basket_open_ts)
+        # If we have open reduce-only orders, track their ids for visibility.
+        if open_orders:
+            tp_ids = []
+            for o in open_orders:
+                if str(o.get("reduceOnly", "false")).lower() == "true":
+                    try:
+                        tp_ids.append(int(o.get("orderId")))
+                    except Exception:
+                        continue
+            if tp_ids:
+                self.state.tp_order_ids = tp_ids
         self.log.info(
             "Reconstructed grid from live position qty=%.6f as level %d direction %s", position_qty, level, direction
         )
@@ -146,6 +157,24 @@ class GridBollingerStrategy:
                     order["avgPrice"] = entry_price
             except Exception:
                 pass
+
+        # Try to refine fill price using trades if Binance returned zero/placeholder.
+        try:
+            if order.get("orderId"):
+                trades = self.client.get_user_trades(self.cfg.name, int(order["orderId"]), limit=5)
+                total_qty = 0.0
+                total_quote = 0.0
+                for t in trades:
+                    if int(t.get("orderId", 0)) != int(order["orderId"]):
+                        continue
+                    tqty = float(t.get("qty", 0) or 0)
+                    tquote = float(t.get("quoteQty", 0) or 0)
+                    total_qty += tqty
+                    total_quote += tquote
+                if total_qty > 0 and total_quote > 0:
+                    entry_price = total_quote / total_qty
+        except Exception:
+            pass
 
         if executed <= 0:
             raise BinanceAPIError(f"Market order not filled: {order}")

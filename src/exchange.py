@@ -130,3 +130,13 @@ class BinanceFuturesClient:
         if position_side:
             params["positionSide"] = position_side
         return self._post("/fapi/v1/order", params=params)
+
+    def get_order(self, symbol: str, order_id: int) -> Dict[str, Any]:
+        params = {"symbol": symbol, "orderId": order_id}
+        return self._get("/fapi/v1/order", params=params, signed=True)
+
+    def get_user_trades(self, symbol: str, order_id: Optional[int] = None, limit: int = 20) -> Any:
+        params: Dict[str, Any] = {"symbol": symbol, "limit": limit}
+        if order_id is not None:
+            params["orderId"] = order_id
+        return self._get("/fapi/v1/userTrades", params=params, signed=True)
