@@ -34,6 +34,7 @@ class GridBollingerStrategy:
             self.log.info("Loaded state: %s", self.state)
         self._waiting_for_break = False
         self._last_fill_price: Optional[float] = None
+        self._entry_in_progress = False
 
     def seed_indicator(self, closes) -> None:
         for close in closes[-self.cfg.bollinger.period :]:
@@ -254,8 +255,10 @@ class GridBollingerStrategy:
             return
         if self.state.levels_filled >= self.cfg.max_levels or spacing <= 0:
             return
+        if self._entry_in_progress:
+            return
         # Always anchor next entry exactly one spacing from last fill and only enter when we are beyond that distance.
-        if self.state.last_entry_price is None:
+        if self.state.last_entry_price is None and self.state.next_entry_price is None:
             return
         if self._waiting_for_break and self._last_fill_price is not None:
             if self.state.direction == "short" and price < self._last_fill_price + spacing - 1e-9:
@@ -264,10 +267,12 @@ class GridBollingerStrategy:
             if self.state.direction == "long" and price > self._last_fill_price - spacing + 1e-9:
                 self.state_store.save(self.state)
                 return
-        target_price = (
-            self.state.last_entry_price + spacing if self.state.direction == "short" else self.state.last_entry_price - spacing
-        )
-        self.state.next_entry_price = target_price
+        target_price = self.state.next_entry_price
+        if target_price is None:
+            target_price = (
+                self.state.last_entry_price + spacing if self.state.direction == "short" else self.state.last_entry_price - spacing
+            )
+            self.state.next_entry_price = target_price
         should_enter = False
         if self.state.direction == "short" and price >= target_price:
             should_enter = True
@@ -285,32 +290,44 @@ class GridBollingerStrategy:
             self.log.info("Adjusted qty to meet min notional: %.6f -> %.6f", qty, min_qty)
             qty = min_qty
         side = "SELL" if self.state.direction == "short" else "BUY"
-        order, executed, entry_price = self._execute_market(side, qty, price)
+        self._entry_in_progress = True
         try:
-            order_id = int(order.get("orderId"))
-            self.state.entry_order_ids.append(order_id)
-        except Exception:
-            pass
-        self.state.levels_filled = level
-        self.state.last_entry_price = entry_price
-        self.state.next_entry_price = entry_price + spacing if self.state.direction == "short" else entry_price - spacing
-        cumulative_qty = sum(
-            level_qty(i, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
-            for i in range(1, level + 1)
-        )
-        self.state.max_volume = max(self.state.max_volume, cumulative_qty)
-        self.log.info(
-            "Basket #%d extended %s lvl%d qty=%.6f at %.2f next_entry=%.2f resp=%s",
-            self.state.basket_id,
-            self.state.direction,
-            level,
-            qty,
-            entry_price,
-            self.state.next_entry_price,
-            order,
-        )
-        self._place_tp(entry_price, qty, self.state.direction, level=level)
-        self.state_store.save(self.state)
+            order, executed, entry_price = self._execute_market(side, qty, price)
+        except Exception as exc:
+            self.log.error("Failed to place grid entry level %d: %s", level, exc)
+            self._entry_in_progress = False
+            return
+        try:
+            try:
+                order_id = int(order.get("orderId"))
+                self.state.entry_order_ids.append(order_id)
+            except Exception:
+                pass
+            self.state.levels_filled = level
+            self.state.last_entry_price = target_price
+            next_entry = target_price + spacing if self.state.direction == "short" else target_price - spacing
+            self.state.next_entry_price = next_entry
+            cumulative_qty = sum(
+                level_qty(i, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
+                for i in range(1, level + 1)
+            )
+            self.state.max_volume = max(self.state.max_volume, cumulative_qty)
+            self._last_fill_price = entry_price
+            self._waiting_for_break = True
+            self.log.info(
+                "Basket #%d extended %s lvl%d qty=%.6f at %.2f next_entry=%.2f resp=%s",
+                self.state.basket_id,
+                self.state.direction,
+                level,
+                qty,
+                entry_price,
+                self.state.next_entry_price,
+                order,
+            )
+            self._place_tp(entry_price, qty, self.state.direction, level=level)
+            self.state_store.save(self.state)
+        finally:
+            self._entry_in_progress = False
 
     def _ensure_basket_time_from_entries(self) -> None:
         if self.state.basket_open_ts is not None and self.state.basket_id:
@@ -437,7 +454,9 @@ class GridBollingerStrategy:
         if not entry_trades:
             return False
         self.state.entry_order_ids = list({t["oid"] for t in entry_trades})
-        self.state.last_entry_price = entry_trades[-1]["price"] or self.state.last_entry_price
+        inferred_price = entry_trades[-1]["price"] or self.state.last_entry_price
+        self.state.last_entry_price = inferred_price
+        self._last_fill_price = inferred_price or self._last_fill_price
         if entry_trades[0]["time"]:
             self.state.basket_open_ts = entry_trades[0]["time"] / 1000
         spacing = self.cfg.grid_spacing_usd
@@ -598,6 +617,9 @@ class GridBollingerStrategy:
                 except Exception as exc:  # noqa: BLE001
                     self.log.error("Recording basket summary failed: %s", exc)
             self.state.reset()
+            self._last_fill_price = None
+            self._waiting_for_break = False
+            self._entry_in_progress = False
             if self.cfg.cooldown_minutes > 0:
                 self.state.cooldown_until_ts = time.time() + self.cfg.cooldown_minutes * 60
                 self.log.info("Cooldown active for %d minutes", self.cfg.cooldown_minutes)
@@ -692,11 +714,11 @@ class GridBollingerStrategy:
                 self._log_fills_snapshot()
             if now - getattr(self, "_last_summary_log", 0) >= summary_throttle:
                 self._last_summary_log = now
-                last_entry = self.state.last_entry_price or entry_price or mark_price
+                last_entry = self._last_fill_price or self.state.last_entry_price or entry_price or mark_price
                 self._log_basket_summary(abs(position_qty), entry_price if entry_price > 0 else mark_price, last_entry, mark_price, self.state.direction)
             if now - getattr(self, "_last_panel_log", 0) >= panel_throttle:
                 self._last_panel_log = now
-                last_entry = self.state.last_entry_price or entry_price or mark_price
+                last_entry = self._last_fill_price or self.state.last_entry_price or entry_price or mark_price
                 target_tp = self._tp_price(entry_price if entry_price > 0 else mark_price, abs(position_qty), self.state.direction or "long")
                 tp_val = self._tp_profit(entry_price if entry_price > 0 else mark_price, target_tp, abs(position_qty), self.state.direction or "long")
                 self._log_basket_panel(abs(position_qty), entry_price if entry_price > 0 else mark_price, last_entry, mark_price, self.state.direction, target_tp, tp_val)
