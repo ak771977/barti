@@ -55,7 +55,8 @@ def main() -> None:
 
     client = BinanceFuturesClient(api_key, api_secret, cfg.exchange.base_url, cfg.exchange.recv_window)
     state_store = StateStore(cfg.state_file)
-    basket_recorder = BasketRecorder(f"state/baskets-{cfg.symbol.name}.csv")
+    baskets_path = f"state/baskets-{env_label}-{cfg.symbol.name}.csv"
+    basket_recorder = BasketRecorder(baskets_path)
 
     logger.info("Starting bot in %s mode for %s", env_label.upper(), cfg.symbol.name)
 

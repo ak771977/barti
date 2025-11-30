@@ -38,7 +38,7 @@ Minimal Python bot for ETHUSDT perpetuals on Binance Futures with Bollinger-trig
 - Logs rotate daily under `logs/` and older months are zipped into `logs/archive/`.
 - Poll loop uses REST every `poll_interval_seconds` (default 10s) to keep VPS footprint low. Websocket/reactive mode can be added later.
 - Detailed logs include basket id, level, qty, entry price, next entry, and TP placement per level.
-- Basket summaries are also appended to `state/baskets-<SYMBOL>.csv` (non-rotating) with open/close time, basket id, direction, levels, max volume, margin used, worst drawdown, and PnL.
+- Basket summaries are also appended to `state/baskets-<ENV>-<SYMBOL>.csv` (non-rotating, ENV is `testnet` or `live`) with open/close time, basket id, direction, levels, max volume, margin used, worst drawdown, and PnL.
 - Separate log files per environment: `logs/bot-testnet.log*` for testnet, `logs/bot-live.log*` for live.
 
 ## Roadmap ideas
