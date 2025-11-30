@@ -196,23 +196,14 @@ class GridBollingerStrategy:
             return
         if self.state.levels_filled >= self.cfg.max_levels or spacing <= 0:
             return
-        # Keep next entry anchored to the last fill so spacing is respected even after restarts/config changes.
-        if self.state.last_entry_price is not None:
-            target_from_last = (
+        # Always anchor next entry exactly one spacing from last fill and only enter when we are beyond that distance.
+        while True:
+            if self.state.last_entry_price is None:
+                return
+            target_price = (
                 self.state.last_entry_price + spacing if self.state.direction == "short" else self.state.last_entry_price - spacing
             )
-            if (
-                self.state.next_entry_price is None
-                or (self.state.direction == "long" and self.state.next_entry_price > target_from_last + 1e-9)
-                or (self.state.direction == "short" and self.state.next_entry_price < target_from_last - 1e-9)
-            ):
-                self.state.next_entry_price = target_from_last
-                self.state_store.save(self.state)
-
-        while True:
-            target_price = self.state.next_entry_price
-            if target_price is None:
-                return
+            self.state.next_entry_price = target_price
             should_enter = False
             if self.state.direction == "short" and price >= target_price:
                 should_enter = True
@@ -220,8 +211,10 @@ class GridBollingerStrategy:
                 should_enter = True
 
             if not should_enter:
+                self.state_store.save(self.state)
                 return
             if self.state.levels_filled >= self.cfg.max_levels:
+                self.state_store.save(self.state)
                 return
 
             level = self.state.levels_filled + 1
