@@ -97,6 +97,40 @@ class GridBollingerStrategy:
             resp,
         )
 
+    def _execute_market(self, side: str, qty: float, price: float) -> tuple[dict, float, float]:
+        """
+        Place a market order and ensure it filled by checking executedQty,
+        otherwise re-check position delta to infer fill.
+        """
+        try:
+            pre_pos = self.client.get_position_info(self.cfg.name)
+            pre_qty = float(pre_pos.get("positionAmt", 0))
+        except Exception:
+            pre_qty = 0.0
+
+        order = self.client.place_market_order(self.cfg.name, side, qty)
+        executed = float(order.get("executedQty", 0))
+        entry_price = float(order.get("avgPrice") or price)
+
+        if executed <= 0:
+            try:
+                post_pos = self.client.get_position_info(self.cfg.name)
+                post_qty = float(post_pos.get("positionAmt", 0))
+                delta = abs(post_qty - pre_qty)
+                if delta >= qty * 0.9:
+                    executed = delta
+                    entry_price = float(post_pos.get("entryPrice") or entry_price or price)
+                    order["executedQty"] = executed
+                    order["avgPrice"] = entry_price
+            except Exception:
+                pass
+
+        if executed <= 0:
+            raise BinanceAPIError(f"Market order not filled: {order}")
+        if entry_price <= 0:
+            entry_price = price
+        return order, executed, entry_price
+
     def _start_position(self, price: float, direction: str) -> None:
         qty = level_qty(1, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
         min_qty = round_up(self.cfg.min_notional_usd / price, self.cfg.min_qty_step)
@@ -109,13 +143,7 @@ class GridBollingerStrategy:
             wallet = float(account.get("totalWalletBalance", 0))
         except Exception:
             wallet = None
-        order = self.client.place_market_order(self.cfg.name, side, qty)
-        executed = float(order.get("executedQty", 0))
-        if executed <= 0:
-            raise BinanceAPIError(f"Market order not filled: {order}")
-        entry_price = float(order.get("avgPrice") or price)
-        if entry_price <= 0:
-            entry_price = price
+        order, executed, entry_price = self._execute_market(side, qty, price)
         self.state.direction = direction
         self.state.last_entry_price = entry_price
         self.state.levels_filled = 1
@@ -160,13 +188,7 @@ class GridBollingerStrategy:
             self.log.info("Adjusted qty to meet min notional: %.6f -> %.6f", qty, min_qty)
             qty = min_qty
         side = "SELL" if self.state.direction == "short" else "BUY"
-        order = self.client.place_market_order(self.cfg.name, side, qty)
-        executed = float(order.get("executedQty", 0))
-        if executed <= 0:
-            raise BinanceAPIError(f"Market order not filled: {order}")
-        entry_price = float(order.get("avgPrice") or price)
-        if entry_price <= 0:
-            entry_price = price
+        order, executed, entry_price = self._execute_market(side, qty, price)
         self.state.levels_filled = level
         self.state.last_entry_price = entry_price
         spacing = self.cfg.grid_spacing_usd
