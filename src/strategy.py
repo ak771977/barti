@@ -564,9 +564,26 @@ class GridBollingerStrategy:
         lines.append(f" PnL          | {pnl:>8.4f} USDT")
         lines.append(f" TP           | {tp_price:>8.2f} (pnl {tp_pnl:>.4f}, dist {tp_dist:>.2f})")
         margin_used = self._last_margin_used
+        if qty > 0 and margin_used <= 0:
+            fetched_margin = self._fetch_margin_from_account()
+            if fetched_margin > 0:
+                margin_used = fetched_margin
+                self._last_margin_used = fetched_margin
         lines.append(f" Margin Used  | {margin_used:>8.2f} USDT")
         for line in lines:
             self.log.info(line)
+
+    def _fetch_margin_from_account(self) -> float:
+        try:
+            account = self.client.get_account()
+            for pos in account.get("positions", []):
+                if pos.get("symbol") != self.cfg.name:
+                    continue
+                margin_val = pos.get("initialMargin") or pos.get("positionInitialMargin")
+                return float(margin_val or 0.0)
+        except Exception:
+            return 0.0
+        return 0.0
 
     def _maybe_reset_state(self, position_qty: float) -> None:
         if abs(position_qty) < 1e-8 and self.state.direction:
