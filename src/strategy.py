@@ -400,11 +400,20 @@ class GridBollingerStrategy:
                 continue
         if not trades:
             return False
-        trades.sort(key=lambda x: x["time"], reverse=True)  # newest first
-        net = 0.0
+        trades.sort(key=lambda x: x["time"])  # chronological
+        # Start after the last opposite-side trade (last exit) to avoid older baskets.
+        last_opposite_idx = -1
+        for idx, t in enumerate(trades):
+            if (direction == "long" and not t["buyer"]) or (direction == "short" and t["buyer"]):
+                last_opposite_idx = idx
+        active_slice = trades[last_opposite_idx + 1 :] if last_opposite_idx + 1 < len(trades) else trades
+        if not active_slice:
+            return False
+        # From the active slice, pick minimal recent trades (reverse) that sum to the open size.
         picked: list[dict] = []
+        net = 0.0
         tol = max(1e-6, position_qty * 0.01)
-        for t in trades:
+        for t in reversed(active_slice):
             delta = t["qty"] if (direction == "long" and t["buyer"]) or (direction == "short" and not t["buyer"]) else -t["qty"]
             net += delta
             picked.append(t)
@@ -412,7 +421,7 @@ class GridBollingerStrategy:
                 break
         if net < position_qty - tol:
             return False
-        picked.reverse()  # chronological for display
+        picked.reverse()
         entry_trades = [t for t in picked if (t["buyer"] if direction == "long" else not t["buyer"])]
         if not entry_trades:
             return False
