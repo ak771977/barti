@@ -367,6 +367,30 @@ class GridBollingerStrategy:
             for r in rows:
                 self.log.info(r)
 
+    def _log_basket_summary(
+        self,
+        qty: float,
+        avg_entry: float,
+        last_entry: float,
+        mark_price: float,
+        direction: str,
+    ) -> None:
+        if qty <= 0 or not direction:
+            return
+        target_tp = self._tp_price(avg_entry if avg_entry > 0 else mark_price, qty, direction)
+        tp_pnl = self._tp_profit(avg_entry if avg_entry > 0 else mark_price, target_tp, qty, direction)
+        spacing = self.cfg.grid_spacing_usd
+        next_add = last_entry - spacing if direction == "long" else last_entry + spacing
+        tp_dist = target_tp - mark_price if direction == "long" else mark_price - target_tp
+        add_dist = next_add - mark_price if direction == "long" else mark_price - next_add
+        header = "Basket Summary: qty     avg_entry last_entry mark     tp_price tp_pnl  next_add add_dist tp_dist"
+        row = (
+            f"                 {qty:7.4f} {avg_entry:9.2f} {last_entry:9.2f} "
+            f"{mark_price:7.2f} {target_tp:8.2f} {tp_pnl:6.4f} {next_add:8.2f} {add_dist:7.2f} {tp_dist:7.2f}"
+        )
+        self.log.info(header)
+        self.log.info(row)
+
     def _maybe_reset_state(self, position_qty: float) -> None:
         if abs(position_qty) < 1e-8 and self.state.direction:
             pnl = None
@@ -465,6 +489,7 @@ class GridBollingerStrategy:
             throttle = getattr(self, "_log_throttle", 60)
             orders_throttle = getattr(self, "_orders_log_throttle", throttle)
             fills_throttle = getattr(self, "_fills_log_throttle", orders_throttle)
+            summary_throttle = getattr(self, "_summary_log_throttle", throttle)
             if now - getattr(self, "_last_pos_log", 0) >= throttle:
                 self._last_pos_log = now
                 add_price = self.state.next_entry_price or 0.0
@@ -494,6 +519,10 @@ class GridBollingerStrategy:
             if now - getattr(self, "_last_fills_log", 0) >= fills_throttle:
                 self._last_fills_log = now
                 self._log_fills_snapshot()
+            if now - getattr(self, "_last_summary_log", 0) >= summary_throttle:
+                self._last_summary_log = now
+                last_entry = self.state.last_entry_price or entry_price or mark_price
+                self._log_basket_summary(abs(position_qty), entry_price if entry_price > 0 else mark_price, last_entry, mark_price, self.state.direction)
             # Ensure TP aligns with current config/size
             try:
                 target_tp = self._tp_price(entry_price if entry_price > 0 else mark_price, abs(position_qty), self.state.direction or "long")
