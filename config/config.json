@@ -1,0 +1,36 @@
+{
+  "poll_interval_seconds": 10,
+  "log_dir": "logs",
+  "exchange": {
+    "base_url": "https://testnet.binancefuture.com",
+    "recv_window": 5000,
+    "testnet": true
+  },
+  "symbol": {
+    "name": "ETHUSDT",
+    "timeframe": "1m",
+    "leverage": 25,
+    "margin_mode": "CROSS",
+    "max_levels": 10,
+    "grid_spacing_usd": 30.0,
+    "target_profit_usd": 10.0,
+    "min_qty_step": 0.001,
+    "grid": {
+      "base_qty": 0.001,
+      "repeat_every": 2,
+      "multiplier": 1.5
+    },
+    "bollinger": {
+      "period": 100,
+      "stddev": 2.0
+    },
+    "cooldown_minutes": 0
+  },
+  "state_file": "state/state.json",
+  "drain_mode": false,
+  "balance_log_interval_seconds": 60,
+  "session_limits": {
+    "max_grids": 0,
+    "max_gain_usd": 0.0
+  }
+}
