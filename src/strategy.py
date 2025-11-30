@@ -431,8 +431,11 @@ class GridBollingerStrategy:
             return
         total_fee = sum(t["fee"] for t in trades) if trades else 0.0
         next_add = last_entry - self.cfg.grid_spacing_usd if direction == "long" else last_entry + self.cfg.grid_spacing_usd
+        symbol_label = self.cfg.name
+        if symbol_label.upper().endswith("USDT"):
+            symbol_label = symbol_label[:-4]
         lines = []
-        header = f"ETH_PERP BASKET | {len(trades)} Orders | {qty:.3f} {self.cfg.symbol.name[:-4]} | Avg: {avg_entry:,.2f}"
+        header = f"{symbol_label} BASKET | {len(trades)} Orders | {qty:.3f} {symbol_label} | Avg: {avg_entry:,.2f}"
         border = "+" + "-" * len(header) + "+"
         lines.append(border)
         lines.append("| " + header + " |")
