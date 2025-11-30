@@ -64,7 +64,8 @@ def main() -> None:
     state_file = args.state_file or cfg.state_file
     if args.state_file is None:
         path = Path(state_file)
-        state_file = str(path.with_name(f"{env_label}-state{path.suffix}"))
+        if env_label not in path.stem:
+            state_file = str(path.with_name(f"{env_label}-state{path.suffix}"))
 
     api_key, api_secret = _get_api_credentials(cfg.exchange.testnet)
     if env_label == "live":
