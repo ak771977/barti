@@ -297,6 +297,30 @@ class GridBollingerStrategy:
             self._place_tp(entry_price, qty, self.state.direction, level=level)
             self.state_store.save(self.state)
 
+    def _log_orders_snapshot(self, open_orders: list) -> None:
+        if not open_orders and not (self.state.entry_order_ids or self.state.tp_order_ids):
+            return
+        header = "Orders: id         side   px        qty        reduceOnly type"
+        rows = []
+        for o in open_orders:
+            oid = o.get("orderId", "-")
+            side = o.get("side", "-")
+            price = o.get("price") or o.get("avgPrice") or "-"
+            qty = o.get("origQty") or o.get("executedQty") or "-"
+            reduce = str(o.get("reduceOnly", "false")).lower()
+            otype = o.get("type", "-")
+            rows.append(f"        {oid:<10} {side:<5} {price:<10} {qty:<10} {reduce:<10} {otype}")
+        if rows:
+            self.log.info(header)
+            for r in rows:
+                self.log.info(r)
+        if self.state.entry_order_ids or self.state.tp_order_ids:
+            self.log.info(
+                "State order ids: entries=%s tps=%s",
+                self.state.entry_order_ids if self.state.entry_order_ids else "[]",
+                self.state.tp_order_ids if self.state.tp_order_ids else "[]",
+            )
+
     def _maybe_reset_state(self, position_qty: float) -> None:
         if abs(position_qty) < 1e-8 and self.state.direction:
             pnl = None
@@ -392,6 +416,7 @@ class GridBollingerStrategy:
             if best_tp:
                 profit_at_tp = self._tp_profit(entry_price if entry_price > 0 else mark_price, best_tp, abs(position_qty), self.state.direction or "long")
             throttle = getattr(self, "_log_throttle", 60)
+            orders_throttle = getattr(self, "_orders_log_throttle", throttle)
             if now - getattr(self, "_last_pos_log", 0) >= throttle:
                 self._last_pos_log = now
                 add_price = self.state.next_entry_price or 0.0
@@ -415,6 +440,9 @@ class GridBollingerStrategy:
                     f"{profit_at_tp:.4f}" if profit_at_tp is not None else "-",
                     len(ro_orders),
                 )
+            if now - getattr(self, "_last_orders_log", 0) >= orders_throttle:
+                self._last_orders_log = now
+                self._log_orders_snapshot(open_orders)
             # Ensure TP aligns with current config/size
             try:
                 target_tp = self._tp_price(entry_price if entry_price > 0 else mark_price, abs(position_qty), self.state.direction or "long")
