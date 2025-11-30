@@ -236,6 +236,7 @@ class GridBollingerStrategy:
         position_qty = pos_info["positionAmt"]
         mark_price = pos_info.get("markPrice", price) or price
         unrealized = pos_info.get("unRealizedProfit", 0.0)
+        entry_price = pos_info.get("entryPrice", 0.0)
         notional = abs(position_qty) * mark_price
         if notional > 0:
             drawdown = unrealized / notional
@@ -245,6 +246,18 @@ class GridBollingerStrategy:
             if abs(position_qty) > self.state.max_volume:
                 self.state.max_volume = abs(position_qty)
                 self.state_store.save(self.state)
+        # Position snapshot for visibility
+        if abs(position_qty) > 0:
+            self.log.info(
+                "Position qty=%.6f entry=%.2f mark=%.2f uPnL=%.4f dir=%s levels=%d next=%.2f",
+                position_qty,
+                entry_price,
+                mark_price,
+                unrealized,
+                self.state.direction or "-",
+                self.state.levels_filled,
+                self.state.next_entry_price or 0.0,
+            )
         self._maybe_reset_state(position_qty)
         if bands is None:
             return
