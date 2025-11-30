@@ -79,7 +79,7 @@ def main() -> None:
     baskets_path = f"state/baskets-{env_label}-{cfg.symbol.name}.csv"
     basket_recorder = BasketRecorder(baskets_path)
 
-    logger.info("Starting bot in %s mode for %s", env_label.upper(), cfg.symbol.name)
+    logger.info("Starting bot in %s mode for %s at %s", env_label.upper(), cfg.symbol.name, cfg.exchange.base_url)
 
     try:
         client.set_leverage(cfg.symbol.name, cfg.symbol.leverage)
