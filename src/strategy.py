@@ -37,6 +37,9 @@ class GridBollingerStrategy:
         for close in closes[-self.cfg.bollinger.period :]:
             self.bb.add(float(close))
 
+    def _new_basket_id(self) -> int:
+        return int(time.time() * 1000)
+
     def reconcile_position(self, price: float, position_qty: float, open_orders: Optional[list] = None) -> None:
         if abs(position_qty) < 1e-8:
             if self.state.direction:
@@ -70,6 +73,9 @@ class GridBollingerStrategy:
         self.state.last_entry_price = price
         spacing = self.cfg.grid_spacing_usd
         self.state.next_entry_price = price + spacing if direction == "short" else price - spacing
+        if self.state.basket_id == 0:
+            self.state.basket_id = self._new_basket_id()
+            self.state.basket_open_ts = time.time()
         self.log.info(
             "Reconstructed grid from live position qty=%.6f as level %d direction %s", position_qty, level, direction
         )
@@ -132,6 +138,11 @@ class GridBollingerStrategy:
         if entry_price <= 0:
             entry_price = price
         return order, executed, entry_price
+
+    def _tp_profit(self, entry_price: float, tp_price: float, qty: float, direction: str) -> float:
+        if direction == "short":
+            return (entry_price - tp_price) * qty
+        return (tp_price - entry_price) * qty
 
     def _execute_market(self, side: str, qty: float, price: float) -> tuple[dict, float, float]:
         """
@@ -219,7 +230,7 @@ class GridBollingerStrategy:
         self.state.levels_filled = 1
         spacing = self.cfg.grid_spacing_usd
         self.state.next_entry_price = entry_price + spacing if direction == "short" else entry_price - spacing
-        self.state.basket_id += 1
+        self.state.basket_id = self._new_basket_id()
         self.state.basket_start_balance = wallet
         self.state.max_volume = max(self.state.max_volume, qty)
         self.state.worst_drawdown = 0.0
@@ -363,8 +374,11 @@ class GridBollingerStrategy:
             dist = None
             if best_tp:
                 dist = best_tp - mark_price if self.state.direction == "long" else mark_price - best_tp
+            profit_at_tp = None
+            if best_tp:
+                profit_at_tp = self._tp_profit(entry_price if entry_price > 0 else mark_price, best_tp, abs(position_qty), self.state.direction or "long")
             self.log.info(
-                "Basket #%d dir=%s pos=%.6f entry=%.2f mark=%.2f uPnL=%.4f levels=%d next=%.2f tp=%s dist_to_tp=%s openTPs=%d",
+                "Basket #%d dir=%s pos=%.6f entry=%.2f mark=%.2f uPnL=%.4f levels=%d next=%.2f tp=%s dist_to_tp=%s tp_pnl=%s openTPs=%d",
                 self.state.basket_id,
                 self.state.direction or "-",
                 position_qty,
@@ -375,6 +389,7 @@ class GridBollingerStrategy:
                 self.state.next_entry_price or 0.0,
                 f"{best_tp:.2f}" if best_tp else "-",
                 f"{dist:.2f}" if dist is not None else "-",
+                f"{profit_at_tp:.4f}" if profit_at_tp is not None else "-",
                 len(ro_orders),
             )
             # Ensure TP aligns with current config/size
