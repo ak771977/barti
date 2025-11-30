@@ -39,7 +39,7 @@ class BasketRecorder:
         "levels",
         "max_volume_eth",
         "margin_used",
-        "margin_level",
+        "margin_ratio",
         "grid_spacing_usd",
         "tp_per_lot_usd",
         "holding_time_min",
@@ -71,7 +71,15 @@ class BasketRecorder:
             writer.writerow(self.HEADER)
             for row in data_rows:
                 old_row_map = dict(zip(recovered_header, row))
-                new_row = [old_row_map.get(col, "") for col in self.HEADER]
+                new_row = []
+                for col in self.HEADER:
+                    if col == "margin_ratio":
+                        val = old_row_map.get(col)
+                        if val is None or val == "":
+                            val = old_row_map.get("margin_level", "")
+                    else:
+                        val = old_row_map.get(col, "")
+                    new_row.append(val)
                 writer.writerow(new_row)
 
     def append(self, symbol: str, summary: dict) -> None:
@@ -93,7 +101,7 @@ class BasketRecorder:
                     summary.get("levels"),
                     max_volume_str,
                     f"{summary.get('margin_used', 0.0):.2f}",
-                    f"{summary.get('margin_level', 0.0):.2f}",
+                    f"{summary.get('margin_ratio', 0.0):.4f}",
                     f"{summary.get('grid_spacing_usd', 0.0):.2f}",
                     f"{summary.get('tp_per_lot_usd', 0.0):.2f}",
                     f"{summary.get('holding_time_min', 0.0):.2f}",

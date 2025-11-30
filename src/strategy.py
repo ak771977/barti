@@ -36,7 +36,7 @@ class GridBollingerStrategy:
         self._last_fill_price: Optional[float] = None
         self._entry_in_progress = False
         self._last_margin_used: float = 0.0
-        self._last_margin_level: float = 0.0
+        self._last_margin_ratio: float = 0.0
 
     def seed_indicator(self, closes) -> None:
         for close in closes[-self.cfg.bollinger.period :]:
@@ -571,8 +571,8 @@ class GridBollingerStrategy:
                 margin_used = fetched_margin
                 self._last_margin_used = fetched_margin
         lines.append(f" Margin Used  | {margin_used:>8.2f} USDT")
-        margin_level = self._last_margin_level
-        lines.append(f" Margin Level | {margin_level:>8.2f}")
+        margin_ratio = self._ensure_margin_ratio(qty, mark_price, margin_used)
+        lines.append(f" Margin Ratio | {margin_ratio:>8.4f}")
         worst_dd = abs(self.state.worst_drawdown)
         lines.append(f" Worst DD     | {worst_dd:>8.4f} USDT")
         for line in lines:
@@ -590,6 +590,22 @@ class GridBollingerStrategy:
             return 0.0
         return 0.0
 
+    def _ensure_margin_ratio(self, qty: float, mark_price: float, margin_used: float) -> float:
+        notional = qty * mark_price
+        ratio = self._last_margin_ratio
+        if notional > 0:
+            if margin_used <= 0 or ratio <= 0:
+                fetched_margin = self._fetch_margin_from_account()
+                if fetched_margin > 0:
+                    margin_used = fetched_margin
+                    self._last_margin_used = fetched_margin
+            if margin_used > 0:
+                ratio = margin_used / notional
+                self._last_margin_ratio = ratio
+            else:
+                ratio = self._last_margin_ratio
+        return ratio
+
     def _maybe_reset_state(self, position_qty: float) -> None:
         if abs(position_qty) < 1e-8 and self.state.direction:
             pnl = None
@@ -606,7 +622,7 @@ class GridBollingerStrategy:
                 "levels": self.state.levels_filled,
                 "max_volume_eth": self.state.max_volume,
                 "margin_used": self._last_margin_used,
-                "margin_level": self._last_margin_level,
+                "margin_ratio": self._last_margin_ratio,
                 "worst_drawdown": self.state.worst_drawdown,
                 "pnl": pnl,
                 "direction": self.state.direction,
@@ -646,7 +662,7 @@ class GridBollingerStrategy:
             self._waiting_for_break = False
             self._entry_in_progress = False
             self._last_margin_used = 0.0
-            self._last_margin_level = 0.0
+            self._last_margin_ratio = 0.0
             if self.cfg.cooldown_minutes > 0:
                 self.state.cooldown_until_ts = time.time() + self.cfg.cooldown_minutes * 60
                 self.log.info("Cooldown active for %d minutes", self.cfg.cooldown_minutes)
@@ -669,9 +685,9 @@ class GridBollingerStrategy:
         if abs(position_qty) > 0:
             self._last_margin_used = margin_used
             if margin_used > 0 and notional > 0:
-                self._last_margin_level = notional / margin_used
+                self._last_margin_ratio = margin_used / notional
             else:
-                self._last_margin_level = 0.0
+                self._last_margin_ratio = 0.0
         self._ensure_basket_time_from_entries()
         if not self.state.entry_order_ids and abs(position_qty) > 0 and self.state.direction:
             if self._populate_entries_from_trades(abs(position_qty), self.state.direction):
