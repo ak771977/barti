@@ -372,49 +372,62 @@ class GridBollingerStrategy:
                 self.log.info(r)
 
     def _populate_entries_from_trades(self, position_qty: float, direction: str) -> bool:
+        """
+        Infer active entry trades for the current open position by walking trades
+        backwards and netting until the open size is covered. This avoids picking
+        up older, fully-closed baskets.
+        """
         if position_qty <= 0 or not direction:
             return False
         try:
-            trades = self.client.get_user_trades(self.cfg.name, limit=100)
+            trades_raw = self.client.get_user_trades(self.cfg.name, limit=200)
         except Exception:
             return False
-        if not trades:
+        if not trades_raw:
             return False
-        want_buyer = direction == "long"
-        filtered = []
-        for t in trades:
+        trades = []
+        for t in trades_raw:
             try:
-                buyer = bool(t.get("buyer", False))
-                if buyer != want_buyer:
-                    continue
-                qty = float(t.get("qty", 0) or 0)
-                price = float(t.get("price", 0) or 0)
-                fee = float(t.get("commission", 0) or 0)
-                ts = int(t.get("time", 0))
-                oid = int(t.get("orderId", 0))
+                trades.append(
+                    {
+                        "buyer": bool(t.get("buyer", False)),
+                        "qty": float(t.get("qty", 0) or 0),
+                        "price": float(t.get("price", 0) or 0),
+                        "fee": float(t.get("commission", 0) or 0),
+                        "time": int(t.get("time", 0)),
+                        "oid": int(t.get("orderId", 0)),
+                    }
+                )
             except Exception:
                 continue
-            filtered.append({"oid": oid, "time": ts, "qty": qty, "price": price, "fee": fee})
-        filtered.sort(key=lambda x: x["time"])
-        cumulative = 0.0
-        selected: list[dict] = []
-        for t in filtered:
-            cumulative += t["qty"]
-            selected.append(t)
-            if cumulative >= position_qty - 1e-9:
-                break
-        if not selected:
+        if not trades:
             return False
-        self.state.entry_order_ids = list({t["oid"] for t in selected})
-        self.state.last_entry_price = selected[-1]["price"] or self.state.last_entry_price
-        if selected[0]["time"]:
-            self.state.basket_open_ts = selected[0]["time"] / 1000
+        trades.sort(key=lambda x: x["time"], reverse=True)
+        target = position_qty
+        net = 0.0
+        picked: list[dict] = []
+        for t in trades:
+            delta = t["qty"] if (direction == "long" and t["buyer"]) or (direction == "short" and not t["buyer"]) else -t["qty"]
+            net += delta
+            picked.append(t)
+            if net >= target - 1e-9:
+                break
+        if net < target * 0.99:
+            return False
+        picked.reverse()  # chronological for readability
+        entry_trades = [t for t in picked if (t["buyer"] if direction == "long" else not t["buyer"])]
+        if not entry_trades:
+            return False
+        self.state.entry_order_ids = list({t["oid"] for t in entry_trades})
+        self.state.last_entry_price = entry_trades[-1]["price"] or self.state.last_entry_price
+        if entry_trades[0]["time"]:
+            self.state.basket_open_ts = entry_trades[0]["time"] / 1000
         spacing = self.cfg.grid_spacing_usd
         if spacing > 0 and self.state.last_entry_price:
             self.state.next_entry_price = (
                 self.state.last_entry_price - spacing if direction == "long" else self.state.last_entry_price + spacing
             )
-        if self.state.basket_open_ts and self.state.basket_id == 0:
+        if self.state.basket_open_ts:
             self.state.basket_id = self._new_basket_id(self.state.basket_open_ts)
         return True
 
