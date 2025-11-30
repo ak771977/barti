@@ -14,16 +14,11 @@ if [ ! -d ".venv" ]; then
   exit 1
 fi
 
-if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-  echo "Session '$SESSION_NAME' already running. Attaching..."
-  tmux attach -t "$SESSION_NAME"
+if TMUX_TMPDIR="$TMUX_TMPDIR" tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+  echo "Session '$SESSION_NAME' already running. Attach with: TMUX_TMPDIR=\"$TMUX_TMPDIR\" tmux attach -t $SESSION_NAME"
+  TMUX_TMPDIR="$TMUX_TMPDIR" tmux attach -t "$SESSION_NAME"
   exit 0
 fi
 
-if TMUX_TMPDIR="$TMUX_TMPDIR" tmux new-session -d -s "$SESSION_NAME" "$SHELL -lc '$RUN_CMD'"; then
-  echo "Started tmux session '$SESSION_NAME'. Attach with: TMUX_TMPDIR=\"$TMUX_TMPDIR\" tmux attach -t $SESSION_NAME"
-  exit 0
-fi
-
-echo "tmux unavailable here; running in foreground. Press Ctrl+C to stop." >&2
-exec bash -lc "$RUN_CMD"
+TMUX_TMPDIR="$TMUX_TMPDIR" tmux new-session -d -s "$SESSION_NAME" "$SHELL -lc '$RUN_CMD'"
+echo "Started tmux session '$SESSION_NAME'. Attach with: TMUX_TMPDIR=\"$TMUX_TMPDIR\" tmux attach -t $SESSION_NAME"
