@@ -27,6 +27,7 @@ class SymbolConfig:
     max_levels: int
     grid_spacing_usd: float
     target_profit_usd: float
+    lot_size: float
     min_qty_step: float
     min_notional_usd: float
     grid: GridShapeConfig
@@ -84,6 +85,7 @@ def _parse_symbol(cfg: Dict[str, Any]) -> SymbolConfig:
         max_levels=cfg.get("max_levels", 10),
         grid_spacing_usd=cfg["grid_spacing_usd"],
         target_profit_usd=cfg["target_profit_usd"],
+        lot_size=cfg.get("lot_size", 1.0),
         min_qty_step=cfg.get("min_qty_step", 0.001),
         min_notional_usd=cfg.get("min_notional_usd", 20.0),
         grid=_parse_grid(cfg["grid"]),

@@ -15,6 +15,7 @@
     "max_levels": 10,
     "grid_spacing_usd": 30.0,
     "target_profit_usd": 10.0,
+    "lot_size": 1.0,
     "min_qty_step": 0.001,
     "min_notional_usd": 20.0,
     "grid": {

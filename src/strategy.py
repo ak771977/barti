@@ -76,7 +76,9 @@ class GridBollingerStrategy:
         self.state_store.save(self.state)
 
     def _tp_price(self, entry_price: float, qty: float, direction: str) -> float:
-        delta = self.cfg.target_profit_usd / qty
+        lots = max(qty / self.cfg.lot_size, 1e-9)
+        target = lots * self.cfg.target_profit_usd
+        delta = target / qty
         if direction == "short":
             raw = entry_price - delta
         else:
