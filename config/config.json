@@ -18,7 +18,7 @@
     "min_qty_step": 0.001,
     "min_notional_usd": 20.0,
     "grid": {
-      "base_qty": 0.001,
+      "base_qty": 0.007,
       "repeat_every": 2,
       "multiplier": 1.5
     },
