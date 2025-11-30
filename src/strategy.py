@@ -381,16 +381,22 @@ class GridBollingerStrategy:
                 profit_at_tp = self._tp_profit(entry_price if entry_price > 0 else mark_price, best_tp, abs(position_qty), self.state.direction or "long")
             if now - getattr(self, "_last_pos_log", 0) >= self.cfg.log_throttle_seconds:
                 self._last_pos_log = now
+                add_price = self.state.next_entry_price or 0.0
+                add_dist = add_price - mark_price if self.state.direction == "long" else mark_price - add_price if add_price else None
+                avg_entry = entry_price
+                last_entry = self.state.last_entry_price or entry_price
                 self.log.info(
-                    "Basket #%d dir=%s pos=%.6f entry=%.2f mark=%.2f uPnL=%.4f levels=%d next=%.2f tp=%s dist_to_tp=%s tp_pnl=%s openTPs=%d",
+                    "Basket #%d dir=%s pos=%.6f avg_entry=%.2f last_entry=%.2f mark=%.2f uPnL=%.4f levels=%d next=%.2f dist_to_add=%s tp=%s dist_to_tp=%s tp_pnl=%s openTPs=%d",
                     self.state.basket_id,
                     self.state.direction or "-",
                     position_qty,
-                    entry_price,
+                    avg_entry,
+                    last_entry,
                     mark_price,
                     unrealized,
                     self.state.levels_filled,
                     self.state.next_entry_price or 0.0,
+                    f"{add_dist:.2f}" if add_dist is not None else "-",
                     f"{best_tp:.2f}" if best_tp else "-",
                     f"{dist:.2f}" if dist is not None else "-",
                     f"{profit_at_tp:.4f}" if profit_at_tp is not None else "-",
