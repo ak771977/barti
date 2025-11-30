@@ -9,7 +9,7 @@
   "symbol": {
     "name": "ETHUSDT",
     "timeframe": "1m",
-    "leverage": 25,
+    "leverage": 50,
     "margin_mode": "CROSS",
     "price_tick_size": 0.01,
     "max_levels": 10,
