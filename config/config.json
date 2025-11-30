@@ -13,7 +13,7 @@
     "margin_mode": "CROSS",
     "price_tick_size": 0.01,
     "max_levels": 10,
-    "grid_spacing_usd": 30.0,
+    "grid_spacing_usd": 10.0,
     "target_profit_usd": 10.0,
     "lot_size": 1.0,
     "min_qty_step": 0.001,
