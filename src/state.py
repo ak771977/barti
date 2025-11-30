@@ -40,6 +40,9 @@ class BasketRecorder:
         "max_volume_eth",
         "margin_used",
         "margin_level",
+        "grid_spacing_usd",
+        "tp_per_lot_usd",
+        "holding_time_min",
         "worst_drawdown",
         "pnl",
     ]
@@ -61,8 +64,8 @@ class BasketRecorder:
         if reader and reader[0] == self.HEADER:
             return
 
-        data_rows = reader[1:] if reader else []
         recovered_header = reader[0] if reader else []
+        data_rows = reader[1:] if reader else []
         with open(self.path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(self.HEADER)
@@ -77,12 +80,13 @@ class BasketRecorder:
         if not max_volume_str:
             max_volume_str = "0"
         worst_drawdown = abs(summary.get("worst_drawdown", 0.0))
+        closed_at = summary.get("closed_at") or datetime.utcnow().isoformat()
         with open(self.path, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(
                 [
                     summary.get("open_at"),
-                    datetime.utcnow().isoformat(),
+                    closed_at,
                     summary.get("basket_id"),
                     symbol,
                     summary.get("direction"),
@@ -90,6 +94,9 @@ class BasketRecorder:
                     max_volume_str,
                     f"{summary.get('margin_used', 0.0):.2f}",
                     f"{summary.get('margin_level', 0.0):.2f}",
+                    f"{summary.get('grid_spacing_usd', 0.0):.2f}",
+                    f"{summary.get('tp_per_lot_usd', 0.0):.2f}",
+                    f"{summary.get('holding_time_min', 0.0):.2f}",
                     f"{worst_drawdown:.6f}",
                     "" if summary.get("pnl") is None else f"{summary.get('pnl'):.2f}",
                 ]

@@ -600,6 +600,7 @@ class GridBollingerStrategy:
                     pnl = wallet - self.state.basket_start_balance
             except Exception:
                 wallet = None
+            closed_ts = time.time()
             summary = {
                 "basket_id": self.state.basket_id,
                 "levels": self.state.levels_filled,
@@ -611,6 +612,14 @@ class GridBollingerStrategy:
                 "direction": self.state.direction,
                 "open_at": None if self.state.basket_open_ts is None else time.strftime(
                     "%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.state.basket_open_ts)
+                ),
+                "closed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(closed_ts)),
+                "grid_spacing_usd": self.cfg.grid_spacing_usd,
+                "tp_per_lot_usd": self.cfg.target_profit_usd,
+                "holding_time_min": (
+                    (closed_ts - self.state.basket_open_ts) / 60
+                    if self.state.basket_open_ts
+                    else 0.0
                 ),
             }
             self.log.info(
