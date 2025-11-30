@@ -403,7 +403,9 @@ class GridBollingerStrategy:
                     o = ro_orders[0]
                     oqty = float(o.get("origQty", 0) or 0)
                     oprice = float(o.get("price", 0) or 0)
-                    if abs(oqty - abs(position_qty)) > self.cfg.min_qty_step / 2 or abs(oprice - target_tp) > self.cfg.price_tick_size:
+                    qty_diff = abs(oqty - abs(position_qty))
+                    price_diff = abs(oprice - target_tp)
+                    if qty_diff > self.cfg.min_qty_step / 2 or price_diff > self.cfg.price_tick_size:
                         needs_replace = True
                 if needs_replace:
                     self.log.info("Resetting TP to match current position/target.")
