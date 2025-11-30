@@ -38,8 +38,8 @@ class GridBollingerStrategy:
             self.bb.add(float(close))
 
     def _new_basket_id(self) -> int:
-        # Use seconds-level timestamp; baskets won't start closer than that
-        return int(time.time())
+        # Timestamp in yymmddHHMM format
+        return int(time.strftime("%y%m%d%H%M", time.gmtime()))
 
     def reconcile_position(self, price: float, position_qty: float, open_orders: Optional[list] = None) -> None:
         if abs(position_qty) < 1e-8:
