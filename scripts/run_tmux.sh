@@ -25,8 +25,5 @@ if TMUX_TMPDIR="$TMUX_TMPDIR" tmux new-session -d -s "$SESSION_NAME" "$SHELL -lc
   exit 0
 fi
 
-echo "tmux unavailable here; falling back to nohup background process." >&2
-LOG_OUT="${ROOT_DIR}/logs/runner-stdout.log"
-mkdir -p "$(dirname "$LOG_OUT")"
-nohup bash -lc "$RUN_CMD" >"$LOG_OUT" 2>&1 &
-echo "Started background process with nohup. Tail logs via: tail -f $LOG_OUT"
+echo "tmux unavailable here; running in foreground. Press Ctrl+C to stop." >&2
+exec bash -lc "$RUN_CMD"
