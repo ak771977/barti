@@ -131,6 +131,74 @@ class GridBollingerStrategy:
             entry_price = price
         return order, executed, entry_price
 
+    def _execute_market(self, side: str, qty: float, price: float) -> tuple[dict, float, float]:
+        """
+        Place a market order and ensure it filled by checking executedQty,
+        otherwise re-check position delta to infer fill.
+        """
+        try:
+            pre_pos = self.client.get_position_info(self.cfg.name)
+            pre_qty = float(pre_pos.get("positionAmt", 0))
+        except Exception:
+            pre_qty = 0.0
+
+        order = self.client.place_market_order(self.cfg.name, side, qty)
+        executed = float(order.get("executedQty", 0))
+        entry_price = float(order.get("avgPrice") or price)
+
+        if executed <= 0:
+            try:
+                post_pos = self.client.get_position_info(self.cfg.name)
+                post_qty = float(post_pos.get("positionAmt", 0))
+                delta = abs(post_qty - pre_qty)
+                if delta >= qty * 0.9:
+                    executed = delta
+                    entry_price = float(post_pos.get("entryPrice") or entry_price or price)
+                    order["executedQty"] = executed
+                    order["avgPrice"] = entry_price
+            except Exception:
+                pass
+
+        if executed <= 0:
+            raise BinanceAPIError(f"Market order not filled: {order}")
+        if entry_price <= 0:
+            entry_price = price
+        return order, executed, entry_price
+
+    def _execute_market(self, side: str, qty: float, price: float) -> tuple[dict, float, float]:
+        """
+        Place a market order and ensure it filled by checking executedQty,
+        otherwise re-check position delta to infer fill.
+        """
+        try:
+            pre_pos = self.client.get_position_info(self.cfg.name)
+            pre_qty = float(pre_pos.get("positionAmt", 0))
+        except Exception:
+            pre_qty = 0.0
+
+        order = self.client.place_market_order(self.cfg.name, side, qty)
+        executed = float(order.get("executedQty", 0))
+        entry_price = float(order.get("avgPrice") or price)
+
+        if executed <= 0:
+            try:
+                post_pos = self.client.get_position_info(self.cfg.name)
+                post_qty = float(post_pos.get("positionAmt", 0))
+                delta = abs(post_qty - pre_qty)
+                if delta >= qty * 0.9:
+                    executed = delta
+                    entry_price = float(post_pos.get("entryPrice") or entry_price or price)
+                    order["executedQty"] = executed
+                    order["avgPrice"] = entry_price
+            except Exception:
+                pass
+
+        if executed <= 0:
+            raise BinanceAPIError(f"Market order not filled: {order}")
+        if entry_price <= 0:
+            entry_price = price
+        return order, executed, entry_price
+
     def _start_position(self, price: float, direction: str) -> None:
         qty = level_qty(1, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
         min_qty = round_up(self.cfg.min_notional_usd / price, self.cfg.min_qty_step)
@@ -275,32 +343,56 @@ class GridBollingerStrategy:
                 self.state_store.save(self.state)
         # Position snapshot for visibility
         if abs(position_qty) > 0:
+            best_tp = None
+            ro_orders = []
+            try:
+                ro_orders = [
+                    o for o in self.client.get_open_orders(self.cfg.name)
+                    if str(o.get("reduceOnly", "false")).lower() == "true"
+                ]
+                if ro_orders:
+                    prices = [float(o.get("price", 0) or 0) for o in ro_orders]
+                    if self.state.direction == "long":
+                        best_tp = min(prices)
+                    else:
+                        best_tp = max(prices)
+            except Exception:
+                pass
+
+            dist = None
+            if best_tp:
+                dist = best_tp - mark_price if self.state.direction == "long" else mark_price - best_tp
             self.log.info(
-                "Position qty=%.6f entry=%.2f mark=%.2f uPnL=%.4f dir=%s levels=%d next=%.2f",
+                "Basket #%d dir=%s pos=%.6f entry=%.2f mark=%.2f uPnL=%.4f levels=%d next=%.2f tp=%s dist_to_tp=%s openTPs=%d",
+                self.state.basket_id,
+                self.state.direction or "-",
                 position_qty,
                 entry_price,
                 mark_price,
                 unrealized,
-                self.state.direction or "-",
                 self.state.levels_filled,
                 self.state.next_entry_price or 0.0,
+                f"{best_tp:.2f}" if best_tp else "-",
+                f"{dist:.2f}" if dist is not None else "-",
+                len(ro_orders),
             )
         self._maybe_reset_state(position_qty)
         if bands is None:
             return
 
         lower, mid, upper = bands
-        self.log.info(
-            "Tick price=%.2f BB: lower=%.2f mid=%.2f upper=%.2f dir=%s levels=%d next=%.2f cooldown=%s",
-            price,
-            lower,
-            mid,
-            upper,
-            self.state.direction or "-",
-            self.state.levels_filled,
-            self.state.next_entry_price or 0.0,
-            f"{int(self.state.cooldown_until_ts - time.time())}s" if self.state.cooldown_until_ts else "none",
-        )
+        if abs(position_qty) < 1e-8:
+            self.log.info(
+                "Tick price=%.2f BB: lower=%.2f mid=%.2f upper=%.2f dir=%s levels=%d next=%.2f cooldown=%s",
+                price,
+                lower,
+                mid,
+                upper,
+                self.state.direction or "-",
+                self.state.levels_filled,
+                self.state.next_entry_price or 0.0,
+                f"{int(self.state.cooldown_until_ts - time.time())}s" if self.state.cooldown_until_ts else "none",
+            )
 
         if not self.state.direction:
             if self.drain_mode:
