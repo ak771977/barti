@@ -299,10 +299,10 @@ class GridBollingerStrategy:
         except Exception:
             open_orders = []
         pos_info = self.client.get_position_info(self.cfg.name)
-        position_qty = pos_info["positionAmt"]
-        mark_price = pos_info.get("markPrice", price) or price
-        unrealized = pos_info.get("unRealizedProfit", 0.0)
-        entry_price = pos_info.get("entryPrice", 0.0)
+        position_qty = float(pos_info.get("positionAmt", 0) or 0)
+        mark_price = float(pos_info.get("markPrice", price) or price)
+        unrealized = float(pos_info.get("unRealizedProfit", 0.0) or 0.0)
+        entry_price = float(pos_info.get("entryPrice", 0.0) or 0.0)
         if self.state.last_entry_price is None and entry_price:
             self.state.last_entry_price = entry_price
             spacing = self.cfg.grid_spacing_usd
@@ -418,7 +418,8 @@ class GridBollingerStrategy:
                 self._start_position(price, "long")
             return
 
-        self._extend_grid_if_needed(price)
+        # Use mark price for extension decisions so we react to current liquidation-relevant price.
+        self._extend_grid_if_needed(mark_price)
 
     def set_drain_mode(self, drain: bool) -> None:
         self.drain_mode = drain
