@@ -7,6 +7,7 @@ from .exchange import BinanceFuturesClient
 from .grid import GridState, level_qty
 from .indicators import BollingerBands
 from .state import StateStore
+from .utils import round_up
 
 
 class GridBollingerStrategy:
