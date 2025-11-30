@@ -38,7 +38,7 @@ class GridBollingerStrategy:
             self.bb.add(float(close))
 
     def _new_basket_id(self) -> int:
-        # Timestamp in yymmddHHMM format
+        # Timestamp in yymmddHHMM from current UTC time
         return int(time.strftime("%y%m%d%H%M", time.gmtime()))
 
     def reconcile_position(self, price: float, position_qty: float, open_orders: Optional[list] = None) -> None:
@@ -350,6 +350,7 @@ class GridBollingerStrategy:
         mark_price = pos_info.get("markPrice", price) or price
         unrealized = pos_info.get("unRealizedProfit", 0.0)
         entry_price = pos_info.get("entryPrice", 0.0)
+        now = time.time()
         notional = abs(position_qty) * mark_price
         if notional > 0:
             drawdown = unrealized / notional
@@ -378,21 +379,23 @@ class GridBollingerStrategy:
             profit_at_tp = None
             if best_tp:
                 profit_at_tp = self._tp_profit(entry_price if entry_price > 0 else mark_price, best_tp, abs(position_qty), self.state.direction or "long")
-            self.log.info(
-                "Basket #%d dir=%s pos=%.6f entry=%.2f mark=%.2f uPnL=%.4f levels=%d next=%.2f tp=%s dist_to_tp=%s tp_pnl=%s openTPs=%d",
-                self.state.basket_id,
-                self.state.direction or "-",
-                position_qty,
-                entry_price,
-                mark_price,
-                unrealized,
-                self.state.levels_filled,
-                self.state.next_entry_price or 0.0,
-                f"{best_tp:.2f}" if best_tp else "-",
-                f"{dist:.2f}" if dist is not None else "-",
-                f"{profit_at_tp:.4f}" if profit_at_tp is not None else "-",
-                len(ro_orders),
-            )
+            if now - getattr(self, "_last_pos_log", 0) >= self.cfg.log_throttle_seconds:
+                self._last_pos_log = now
+                self.log.info(
+                    "Basket #%d dir=%s pos=%.6f entry=%.2f mark=%.2f uPnL=%.4f levels=%d next=%.2f tp=%s dist_to_tp=%s tp_pnl=%s openTPs=%d",
+                    self.state.basket_id,
+                    self.state.direction or "-",
+                    position_qty,
+                    entry_price,
+                    mark_price,
+                    unrealized,
+                    self.state.levels_filled,
+                    self.state.next_entry_price or 0.0,
+                    f"{best_tp:.2f}" if best_tp else "-",
+                    f"{dist:.2f}" if dist is not None else "-",
+                    f"{profit_at_tp:.4f}" if profit_at_tp is not None else "-",
+                    len(ro_orders),
+                )
             # Ensure TP aligns with current config/size
             try:
                 target_tp = self._tp_price(entry_price if entry_price > 0 else mark_price, abs(position_qty), self.state.direction or "long")

@@ -52,6 +52,7 @@ class BotConfig:
     drain_mode: bool
     balance_log_interval_seconds: int = 60
     session_limits: "SessionLimits | None" = None
+    log_throttle_seconds: int = 60
 
 
 @dataclass
@@ -119,4 +120,5 @@ def load_config(path: str | Path) -> BotConfig:
         drain_mode=data.get("drain_mode", False),
         balance_log_interval_seconds=data.get("balance_log_interval_seconds", 60),
         session_limits=session_limits,
+        log_throttle_seconds=data.get("log_throttle_seconds", 60),
     )

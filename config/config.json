@@ -35,5 +35,6 @@
   "session_limits": {
     "max_grids": 0,
     "max_gain_usd": 0.0
-  }
+  },
+  "log_throttle_seconds": 60
 }
