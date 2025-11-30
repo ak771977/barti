@@ -373,17 +373,15 @@ class GridBollingerStrategy:
 
     def _populate_entries_from_trades(self, position_qty: float, direction: str) -> bool:
         """
-        Infer active entry trades for the current open position by walking trades
-        backwards and netting until the open size is covered. This avoids picking
-        up older, fully-closed baskets.
+        Infer active entry trades for the current open position by finding the last
+        flat point (net position zero) and taking trades after that. This avoids
+        including older, fully-closed baskets.
         """
         if position_qty <= 0 or not direction:
             return False
         try:
             trades_raw = self.client.get_user_trades(self.cfg.name, limit=200)
         except Exception:
-            return False
-        if not trades_raw:
             return False
         trades = []
         for t in trades_raw:
@@ -402,20 +400,24 @@ class GridBollingerStrategy:
                 continue
         if not trades:
             return False
-        trades.sort(key=lambda x: x["time"], reverse=True)
-        target = position_qty
+        trades.sort(key=lambda x: x["time"])  # chronological
         net = 0.0
-        picked: list[dict] = []
-        for t in trades:
-            delta = t["qty"] if (direction == "long" and t["buyer"]) or (direction == "short" and not t["buyer"]) else -t["qty"]
+        last_flat_idx = -1
+        for idx, t in enumerate(trades):
+            delta = t["qty"] if t["buyer"] else -t["qty"]
             net += delta
-            picked.append(t)
-            if net >= target - 1e-9:
-                break
-        if net < target * 0.99:
+            if abs(net) < 1e-9:
+                last_flat_idx = idx
+        active_trades = trades[last_flat_idx + 1 :] if last_flat_idx + 1 < len(trades) else trades
+        if not active_trades:
             return False
-        picked.reverse()  # chronological for readability
-        entry_trades = [t for t in picked if (t["buyer"] if direction == "long" else not t["buyer"])]
+        # Verify net of active trades matches current position (within tolerance)
+        net_active = 0.0
+        for t in active_trades:
+            net_active += t["qty"] if t["buyer"] else -t["qty"]
+        if abs(net_active - position_qty) > max(1e-6, position_qty * 0.05):
+            return False
+        entry_trades = [t for t in active_trades if (t["buyer"] if direction == "long" else not t["buyer"])]
         if not entry_trades:
             return False
         self.state.entry_order_ids = list({t["oid"] for t in entry_trades})
