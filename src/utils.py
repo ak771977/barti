@@ -20,3 +20,9 @@ def clamp(value: float, minimum: Optional[float] = None, maximum: Optional[float
     if maximum is not None:
         value = min(maximum, value)
     return value
+
+
+def round_to_step(value: float, step: float) -> float:
+    if step <= 0:
+        return value
+    return round(value / step) * step

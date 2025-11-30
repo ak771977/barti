@@ -23,6 +23,7 @@ class SymbolConfig:
     timeframe: str
     leverage: int
     margin_mode: str
+    price_tick_size: float
     max_levels: int
     grid_spacing_usd: float
     target_profit_usd: float
@@ -79,6 +80,7 @@ def _parse_symbol(cfg: Dict[str, Any]) -> SymbolConfig:
         timeframe=cfg.get("timeframe", "1m"),
         leverage=cfg.get("leverage", 25),
         margin_mode=cfg.get("margin_mode", "CROSS").upper(),
+        price_tick_size=cfg.get("price_tick_size", 0.01),
         max_levels=cfg.get("max_levels", 10),
         grid_spacing_usd=cfg["grid_spacing_usd"],
         target_profit_usd=cfg["target_profit_usd"],

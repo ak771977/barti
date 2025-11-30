@@ -3,11 +3,11 @@ import time
 from typing import Optional, Tuple
 
 from .config import SymbolConfig
-from .exchange import BinanceFuturesClient
+from .exchange import BinanceFuturesClient, BinanceAPIError
 from .grid import GridState, level_qty
 from .indicators import BollingerBands
 from .state import StateStore
-from .utils import round_up
+from .utils import round_up, round_to_step
 
 
 class GridBollingerStrategy:
@@ -73,8 +73,10 @@ class GridBollingerStrategy:
     def _tp_price(self, entry_price: float, qty: float, direction: str) -> float:
         delta = self.cfg.target_profit_usd / qty
         if direction == "short":
-            return entry_price - delta
-        return entry_price + delta
+            raw = entry_price - delta
+        else:
+            raw = entry_price + delta
+        return round_to_step(raw, self.cfg.price_tick_size)
 
     def _place_tp(self, entry_price: float, qty: float, direction: str, level: int) -> None:
         tp_price = self._tp_price(entry_price, qty, direction)
@@ -103,7 +105,12 @@ class GridBollingerStrategy:
         except Exception:
             wallet = None
         order = self.client.place_market_order(self.cfg.name, side, qty)
+        executed = float(order.get("executedQty", 0))
+        if executed <= 0:
+            raise BinanceAPIError(f"Market order not filled: {order}")
         entry_price = float(order.get("avgPrice") or price)
+        if entry_price <= 0:
+            entry_price = price
         self.state.direction = direction
         self.state.last_entry_price = entry_price
         self.state.levels_filled = 1
@@ -149,7 +156,12 @@ class GridBollingerStrategy:
             qty = min_qty
         side = "SELL" if self.state.direction == "short" else "BUY"
         order = self.client.place_market_order(self.cfg.name, side, qty)
+        executed = float(order.get("executedQty", 0))
+        if executed <= 0:
+            raise BinanceAPIError(f"Market order not filled: {order}")
         entry_price = float(order.get("avgPrice") or price)
+        if entry_price <= 0:
+            entry_price = price
         self.state.levels_filled = level
         self.state.last_entry_price = entry_price
         spacing = self.cfg.grid_spacing_usd
