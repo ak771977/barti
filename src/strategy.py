@@ -56,6 +56,7 @@ class GridBollingerStrategy:
             return
 
         direction = "long" if position_qty > 0 else "short"
+        self.state.direction = direction
         abs_qty = abs(position_qty)
         level = 0
         cumulative = 0.0
@@ -73,7 +74,6 @@ class GridBollingerStrategy:
             ro_count = sum(1 for o in open_orders if str(o.get("reduceOnly", "false")).lower() == "true")
             if ro_count > level:
                 level = min(ro_count, self.cfg.max_levels)
-        self.state.direction = direction
         self.state.levels_filled = level
         inferred_entry = float(pos_info.get("entryPrice", price)) if pos_info else price
         self.state.last_entry_price = inferred_entry or price
@@ -95,6 +95,10 @@ class GridBollingerStrategy:
                         continue
             if tp_ids:
                 self.state.tp_order_ids = tp_ids
+        if not self.state.entry_order_ids:
+            populated = self._populate_entries_from_trades(abs_qty, direction)
+            if populated:
+                self.state_store.save(self.state)
         self.log.info(
             "Reconstructed grid from live position qty=%.6f as level %d direction %s", position_qty, level, direction
         )
@@ -367,6 +371,53 @@ class GridBollingerStrategy:
             for r in rows:
                 self.log.info(r)
 
+    def _populate_entries_from_trades(self, position_qty: float, direction: str) -> bool:
+        if position_qty <= 0 or not direction:
+            return False
+        try:
+            trades = self.client.get_user_trades(self.cfg.name, limit=100)
+        except Exception:
+            return False
+        if not trades:
+            return False
+        want_buyer = direction == "long"
+        filtered = []
+        for t in trades:
+            try:
+                buyer = bool(t.get("buyer", False))
+                if buyer != want_buyer:
+                    continue
+                qty = float(t.get("qty", 0) or 0)
+                price = float(t.get("price", 0) or 0)
+                fee = float(t.get("commission", 0) or 0)
+                ts = int(t.get("time", 0))
+                oid = int(t.get("orderId", 0))
+            except Exception:
+                continue
+            filtered.append({"oid": oid, "time": ts, "qty": qty, "price": price, "fee": fee})
+        filtered.sort(key=lambda x: x["time"])
+        cumulative = 0.0
+        selected: list[dict] = []
+        for t in filtered:
+            cumulative += t["qty"]
+            selected.append(t)
+            if cumulative >= position_qty - 1e-9:
+                break
+        if not selected:
+            return False
+        self.state.entry_order_ids = list({t["oid"] for t in selected})
+        self.state.last_entry_price = selected[-1]["price"] or self.state.last_entry_price
+        if selected[0]["time"]:
+            self.state.basket_open_ts = selected[0]["time"] / 1000
+        spacing = self.cfg.grid_spacing_usd
+        if spacing > 0 and self.state.last_entry_price:
+            self.state.next_entry_price = (
+                self.state.last_entry_price - spacing if direction == "long" else self.state.last_entry_price + spacing
+            )
+        if self.state.basket_open_ts and self.state.basket_id == 0:
+            self.state.basket_id = self._new_basket_id(self.state.basket_open_ts)
+        return True
+
     def _log_basket_summary(
         self,
         qty: float,
@@ -435,7 +486,7 @@ class GridBollingerStrategy:
         if symbol_label.upper().endswith("USDT"):
             symbol_label = symbol_label[:-4]
         lines = []
-        header = f"{symbol_label} BASKET | {len(trades)} Orders | {qty:.3f} {symbol_label} | Avg: {avg_entry:,.2f}"
+        header = f"{symbol_label} BASKET #{self.state.basket_id} | {len(trades)} Orders | {qty:.3f} {symbol_label} | Avg: {avg_entry:,.2f}"
         border = "+" + "-" * len(header) + "+"
         lines.append(border)
         lines.append("| " + header + " |")
@@ -520,6 +571,9 @@ class GridBollingerStrategy:
         unrealized = float(pos_info.get("unRealizedProfit", 0.0) or 0.0)
         entry_price = float(pos_info.get("entryPrice", 0.0) or 0.0)
         self._ensure_basket_time_from_entries()
+        if not self.state.entry_order_ids and abs(position_qty) > 0 and self.state.direction:
+            if self._populate_entries_from_trades(abs(position_qty), self.state.direction):
+                self.state_store.save(self.state)
         if self.state.last_entry_price is None and entry_price:
             self.state.last_entry_price = entry_price
             spacing = self.cfg.grid_spacing_usd
