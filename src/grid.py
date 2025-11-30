@@ -23,6 +23,7 @@ class GridState:
         self.next_entry_price = None
         self.levels_filled = 0
         self.cooldown_until_ts = None
+        self.basket_id = 0
         self.basket_start_balance = None
         self.max_volume = 0.0
         self.worst_drawdown = 0.0

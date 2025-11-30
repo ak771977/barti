@@ -37,11 +37,15 @@ class GridBollingerStrategy:
         for close in closes[-self.cfg.bollinger.period :]:
             self.bb.add(float(close))
 
-    def _new_basket_id(self) -> int:
-        # Timestamp in yymmddHHMM from current UTC time
-        return int(time.strftime("%y%m%d%H%M", time.gmtime()))
+    def _new_basket_id(self, opened_at: Optional[float] = None) -> int:
+        """
+        Basket ids are derived from the first fill timestamp (UTC) down to the second.
+        """
+        ts = opened_at or time.time()
+        return int(time.strftime("%y%m%d%H%M%S", time.gmtime(ts)))
 
-    def reconcile_position(self, price: float, position_qty: float, open_orders: Optional[list] = None) -> None:
+    def reconcile_position(self, price: float, pos_info: Optional[dict], open_orders: Optional[list] = None) -> None:
+        position_qty = float(pos_info.get("positionAmt", 0)) if pos_info else 0.0
         if abs(position_qty) < 1e-8:
             if self.state.direction:
                 self.log.info("No position on exchange; clearing saved grid state.")
@@ -71,13 +75,15 @@ class GridBollingerStrategy:
                 level = min(ro_count, self.cfg.max_levels)
         self.state.direction = direction
         self.state.levels_filled = level
-        inferred_entry = pos_info["entryPrice"] if isinstance(pos_info, dict) and pos_info.get("entryPrice") else price
-        self.state.last_entry_price = inferred_entry
+        inferred_entry = float(pos_info.get("entryPrice", price)) if pos_info else price
+        self.state.last_entry_price = inferred_entry or price
         spacing = self.cfg.grid_spacing_usd
         self.state.next_entry_price = inferred_entry + spacing if direction == "short" else inferred_entry - spacing
         if self.state.basket_id == 0:
-            self.state.basket_id = self._new_basket_id()
-            self.state.basket_open_ts = time.time()
+            now_ts = time.time()
+            if self.state.basket_open_ts is None:
+                self.state.basket_open_ts = now_ts
+            self.state.basket_id = self._new_basket_id(self.state.basket_open_ts)
         self.log.info(
             "Reconstructed grid from live position qty=%.6f as level %d direction %s", position_qty, level, direction
         )
@@ -146,74 +152,6 @@ class GridBollingerStrategy:
             return (entry_price - tp_price) * qty
         return (tp_price - entry_price) * qty
 
-    def _execute_market(self, side: str, qty: float, price: float) -> tuple[dict, float, float]:
-        """
-        Place a market order and ensure it filled by checking executedQty,
-        otherwise re-check position delta to infer fill.
-        """
-        try:
-            pre_pos = self.client.get_position_info(self.cfg.name)
-            pre_qty = float(pre_pos.get("positionAmt", 0))
-        except Exception:
-            pre_qty = 0.0
-
-        order = self.client.place_market_order(self.cfg.name, side, qty)
-        executed = float(order.get("executedQty", 0))
-        entry_price = float(order.get("avgPrice") or price)
-
-        if executed <= 0:
-            try:
-                post_pos = self.client.get_position_info(self.cfg.name)
-                post_qty = float(post_pos.get("positionAmt", 0))
-                delta = abs(post_qty - pre_qty)
-                if delta >= qty * 0.9:
-                    executed = delta
-                    entry_price = float(post_pos.get("entryPrice") or entry_price or price)
-                    order["executedQty"] = executed
-                    order["avgPrice"] = entry_price
-            except Exception:
-                pass
-
-        if executed <= 0:
-            raise BinanceAPIError(f"Market order not filled: {order}")
-        if entry_price <= 0:
-            entry_price = price
-        return order, executed, entry_price
-
-    def _execute_market(self, side: str, qty: float, price: float) -> tuple[dict, float, float]:
-        """
-        Place a market order and ensure it filled by checking executedQty,
-        otherwise re-check position delta to infer fill.
-        """
-        try:
-            pre_pos = self.client.get_position_info(self.cfg.name)
-            pre_qty = float(pre_pos.get("positionAmt", 0))
-        except Exception:
-            pre_qty = 0.0
-
-        order = self.client.place_market_order(self.cfg.name, side, qty)
-        executed = float(order.get("executedQty", 0))
-        entry_price = float(order.get("avgPrice") or price)
-
-        if executed <= 0:
-            try:
-                post_pos = self.client.get_position_info(self.cfg.name)
-                post_qty = float(post_pos.get("positionAmt", 0))
-                delta = abs(post_qty - pre_qty)
-                if delta >= qty * 0.9:
-                    executed = delta
-                    entry_price = float(post_pos.get("entryPrice") or entry_price or price)
-                    order["executedQty"] = executed
-                    order["avgPrice"] = entry_price
-            except Exception:
-                pass
-
-        if executed <= 0:
-            raise BinanceAPIError(f"Market order not filled: {order}")
-        if entry_price <= 0:
-            entry_price = price
-        return order, executed, entry_price
-
     def _start_position(self, price: float, direction: str) -> None:
         qty = level_qty(1, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
         min_qty = round_up(self.cfg.min_notional_usd / price, self.cfg.min_qty_step)
@@ -232,11 +170,14 @@ class GridBollingerStrategy:
         self.state.levels_filled = 1
         spacing = self.cfg.grid_spacing_usd
         self.state.next_entry_price = entry_price + spacing if direction == "short" else entry_price - spacing
-        self.state.basket_id = self._new_basket_id()
+        now_ts = time.time()
+        if self.state.basket_open_ts is None:
+            self.state.basket_open_ts = now_ts
+        if self.state.basket_id == 0:
+            self.state.basket_id = self._new_basket_id(self.state.basket_open_ts)
         self.state.basket_start_balance = wallet
         self.state.max_volume = max(self.state.max_volume, qty)
         self.state.worst_drawdown = 0.0
-        self.state.basket_open_ts = time.time()
         self.log.info(
             "Basket #%d opened %s lvl1 qty=%.6f at %.2f next_entry=%.2f resp=%s",
             self.state.basket_id,
@@ -250,16 +191,25 @@ class GridBollingerStrategy:
         self.state_store.save(self.state)
 
     def _extend_grid_if_needed(self, price: float) -> None:
-        if not self.state.direction or self.state.next_entry_price is None:
+        spacing = self.cfg.grid_spacing_usd
+        if not self.state.direction:
             return
-        if self.state.levels_filled >= self.cfg.max_levels:
+        if self.state.levels_filled >= self.cfg.max_levels or spacing <= 0:
             return
+        if self.state.next_entry_price is None and self.state.last_entry_price is not None:
+            self.state.next_entry_price = (
+                self.state.last_entry_price + spacing if self.state.direction == "short" else self.state.last_entry_price - spacing
+            )
+            self.state_store.save(self.state)
 
         while True:
+            target_price = self.state.next_entry_price
+            if target_price is None:
+                return
             should_enter = False
-            if self.state.direction == "short" and price >= self.state.next_entry_price:
+            if self.state.direction == "short" and price >= target_price:
                 should_enter = True
-            elif self.state.direction == "long" and price <= self.state.next_entry_price:
+            elif self.state.direction == "long" and price <= target_price:
                 should_enter = True
 
             if not should_enter:
@@ -277,8 +227,7 @@ class GridBollingerStrategy:
             order, executed, entry_price = self._execute_market(side, qty, price)
             self.state.levels_filled = level
             self.state.last_entry_price = entry_price
-            spacing = self.cfg.grid_spacing_usd
-            self.state.next_entry_price = entry_price + spacing if self.state.direction == "short" else entry_price - spacing
+            self.state.next_entry_price = target_price + spacing if self.state.direction == "short" else target_price - spacing
             cumulative_qty = sum(
                 level_qty(i, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
                 for i in range(1, level + 1)

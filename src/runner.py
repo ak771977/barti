@@ -96,7 +96,7 @@ def main() -> None:
         price = client.get_price(cfg.symbol.name)
         pos = client.get_position_info(cfg.symbol.name)
         open_orders = client.get_open_orders(cfg.symbol.name)
-        strat.reconcile_position(price, pos.get("positionAmt", 0.0), open_orders=open_orders)
+        strat.reconcile_position(price, pos, open_orders=open_orders)
     except BinanceAPIError as exc:
         logger.error("Failed to reconcile position on startup: %s", exc)
 
