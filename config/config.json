@@ -15,6 +15,7 @@
     "grid_spacing_usd": 30.0,
     "target_profit_usd": 10.0,
     "min_qty_step": 0.001,
+    "min_notional_usd": 20.0,
     "grid": {
       "base_qty": 0.001,
       "repeat_every": 2,

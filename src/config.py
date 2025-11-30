@@ -27,6 +27,7 @@ class SymbolConfig:
     grid_spacing_usd: float
     target_profit_usd: float
     min_qty_step: float
+    min_notional_usd: float
     grid: GridShapeConfig
     bollinger: BollingerConfig
     cooldown_minutes: int = 0
@@ -82,6 +83,7 @@ def _parse_symbol(cfg: Dict[str, Any]) -> SymbolConfig:
         grid_spacing_usd=cfg["grid_spacing_usd"],
         target_profit_usd=cfg["target_profit_usd"],
         min_qty_step=cfg.get("min_qty_step", 0.001),
+        min_notional_usd=cfg.get("min_notional_usd", 20.0),
         grid=_parse_grid(cfg["grid"]),
         bollinger=_parse_bollinger(cfg["bollinger"]),
         cooldown_minutes=cfg.get("cooldown_minutes", 0),

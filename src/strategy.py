@@ -91,6 +91,10 @@ class GridBollingerStrategy:
 
     def _start_position(self, price: float, direction: str) -> None:
         qty = level_qty(1, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
+        min_qty = round_up(self.cfg.min_notional_usd / price, self.cfg.min_qty_step)
+        if qty < min_qty:
+            self.log.info("Adjusted qty to meet min notional: %.6f -> %.6f", qty, min_qty)
+            qty = min_qty
         side = "SELL" if direction == "short" else "BUY"
         try:
             account = self.client.get_account()
@@ -138,6 +142,10 @@ class GridBollingerStrategy:
 
         level = self.state.levels_filled + 1
         qty = level_qty(level, self.cfg.grid.base_qty, self.cfg.grid.repeat_every, self.cfg.grid.multiplier, self.cfg.min_qty_step)
+        min_qty = round_up(self.cfg.min_notional_usd / price, self.cfg.min_qty_step)
+        if qty < min_qty:
+            self.log.info("Adjusted qty to meet min notional: %.6f -> %.6f", qty, min_qty)
+            qty = min_qty
         side = "SELL" if self.state.direction == "short" else "BUY"
         order = self.client.place_market_order(self.cfg.name, side, qty)
         entry_price = float(order.get("avgPrice") or price)
