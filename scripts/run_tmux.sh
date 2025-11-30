@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 SESSION_NAME="${TMUX_SESSION:-gridbot}"
-RUN_CMD="source .venv/bin/activate && python -m src.runner $*"
+RUN_CMD="source .venv/bin/activate && python -m src.runner $* || { echo 'runner exited with code $?'; sleep 999999; }"
 TMUX_TMPDIR="${TMUX_TMPDIR:-$ROOT_DIR/.tmux-tmp}"
 mkdir -p "$TMUX_TMPDIR"
 
@@ -21,7 +21,7 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
 fi
 
 if TMUX_TMPDIR="$TMUX_TMPDIR" tmux new-session -d -s "$SESSION_NAME" "$SHELL -lc '$RUN_CMD'"; then
-  echo "Started tmux session '$SESSION_NAME'. Attach with: tmux attach -t $SESSION_NAME"
+  echo "Started tmux session '$SESSION_NAME'. Attach with: TMUX_TMPDIR=\"$TMUX_TMPDIR\" tmux attach -t $SESSION_NAME"
   exit 0
 fi
 
