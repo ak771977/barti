@@ -32,6 +32,8 @@ class GridBollingerStrategy:
         self.basket_recorder = basket_recorder
         if self.state.direction:
             self.log.info("Loaded state: %s", self.state)
+        self._waiting_for_break = False
+        self._last_fill_price: Optional[float] = None
 
     def seed_indicator(self, closes) -> None:
         for close in closes[-self.cfg.bollinger.period :]:
@@ -51,6 +53,8 @@ class GridBollingerStrategy:
                 self.log.info("No position on exchange; clearing saved grid state.")
                 self.state.reset()
                 self.state_store.save(self.state)
+                self._waiting_for_break = False
+                self._last_fill_price = None
             return
         if self.state.direction:
             return
@@ -103,6 +107,8 @@ class GridBollingerStrategy:
             "Reconstructed grid from live position qty=%.6f as level %d direction %s", position_qty, level, direction
         )
         self.state_store.save(self.state)
+        self._last_fill_price = entry_price
+        self._waiting_for_break = True
 
     def _tp_price(self, entry_price: float, qty: float, direction: str) -> float:
         lots = max(qty / self.cfg.lot_size, 1e-9)
@@ -239,6 +245,8 @@ class GridBollingerStrategy:
         )
         self._place_tp(entry_price, qty, direction, level=1)
         self.state_store.save(self.state)
+        self._last_fill_price = entry_price
+        self._waiting_for_break = True
 
     def _extend_grid_if_needed(self, price: float) -> None:
         spacing = self.cfg.grid_spacing_usd
@@ -249,6 +257,13 @@ class GridBollingerStrategy:
         # Always anchor next entry exactly one spacing from last fill and only enter when we are beyond that distance.
         if self.state.last_entry_price is None:
             return
+        if self._waiting_for_break and self._last_fill_price is not None:
+            if self.state.direction == "short" and price < self._last_fill_price + spacing - 1e-9:
+                self.state_store.save(self.state)
+                return
+            if self.state.direction == "long" and price > self._last_fill_price - spacing + 1e-9:
+                self.state_store.save(self.state)
+                return
         target_price = (
             self.state.last_entry_price + spacing if self.state.direction == "short" else self.state.last_entry_price - spacing
         )
@@ -520,12 +535,26 @@ class GridBollingerStrategy:
         pnl = (mark_price - avg_entry) * qty if direction == "long" else (avg_entry - mark_price) * qty
         tp_dist = tp_price - mark_price if direction == "long" else mark_price - tp_price
         add_dist = next_add - mark_price if direction == "long" else mark_price - next_add
+        fee_per_qty = total_fee / qty if qty else 0.0
+        break_even = avg_entry + fee_per_qty if direction == "long" else avg_entry - fee_per_qty
         lines.append(f" Avg Price    | {avg_entry:>8.2f}")
-        lines.append(f" Break Even   | {avg_entry + (total_fee / qty if qty else 0):>8.2f}")
+        lines.append(f" Break Even   | {break_even:>8.2f}")
         lines.append(f" Mark         | {mark_price:>8.2f}")
         lines.append(f" Next Add     | {next_add:>8.2f} (dist {add_dist:>.2f})")
         lines.append(f" PnL          | {pnl:>8.4f} USDT")
         lines.append(f" TP           | {tp_price:>8.2f} (pnl {tp_pnl:>.4f}, dist {tp_dist:>.2f})")
+        margin_used = 0.0
+        try:
+            account = self.client.get_account()
+            for pos in account.get("positions", []):
+                if pos.get("symbol") != self.cfg.name:
+                    continue
+                margin_val = pos.get("initialMargin") or pos.get("positionInitialMargin")
+                margin_used = float(margin_val or 0)
+                break
+        except Exception:
+            margin_used = 0.0
+        lines.append(f" Margin Used  | {margin_used:>8.2f} USDT")
         for line in lines:
             self.log.info(line)
 
