@@ -71,9 +71,10 @@ class GridBollingerStrategy:
                 level = min(ro_count, self.cfg.max_levels)
         self.state.direction = direction
         self.state.levels_filled = level
-        self.state.last_entry_price = price
+        inferred_entry = pos_info["entryPrice"] if isinstance(pos_info, dict) and pos_info.get("entryPrice") else price
+        self.state.last_entry_price = inferred_entry
         spacing = self.cfg.grid_spacing_usd
-        self.state.next_entry_price = price + spacing if direction == "short" else price - spacing
+        self.state.next_entry_price = inferred_entry + spacing if direction == "short" else inferred_entry - spacing
         if self.state.basket_id == 0:
             self.state.basket_id = self._new_basket_id()
             self.state.basket_open_ts = time.time()
