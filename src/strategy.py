@@ -297,6 +297,22 @@ class GridBollingerStrategy:
             self._place_tp(entry_price, qty, self.state.direction, level=level)
             self.state_store.save(self.state)
 
+    def _ensure_basket_time_from_entries(self) -> None:
+        if self.state.basket_open_ts is not None and self.state.basket_id:
+            return
+        if not self.state.entry_order_ids:
+            return
+        first_id = min(self.state.entry_order_ids)
+        try:
+            order = self.client.get_order(self.cfg.name, first_id)
+            ts = order.get("updateTime") or order.get("time") or order.get("transactTime")
+            if ts:
+                self.state.basket_open_ts = ts / 1000
+                self.state.basket_id = self._new_basket_id(self.state.basket_open_ts)
+                self.state_store.save(self.state)
+        except Exception:
+            return
+
     def _log_orders_snapshot(self, open_orders: list) -> None:
         if not open_orders and not (self.state.entry_order_ids or self.state.tp_order_ids):
             return
@@ -320,6 +336,36 @@ class GridBollingerStrategy:
                 self.state.entry_order_ids if self.state.entry_order_ids else "[]",
                 self.state.tp_order_ids if self.state.tp_order_ids else "[]",
             )
+
+    def _log_fills_snapshot(self) -> None:
+        if not (self.state.entry_order_ids or self.state.basket_open_ts):
+            return
+        try:
+            trades = self.client.get_user_trades(self.cfg.name, limit=50)
+        except Exception:
+            return
+        rows = []
+        for t in trades:
+            try:
+                oid = int(t.get("orderId", 0))
+            except Exception:
+                continue
+            if self.state.entry_order_ids and oid not in self.state.entry_order_ids:
+                continue
+            ts_ms = t.get("time")
+            if ts_ms and self.state.basket_open_ts and ts_ms / 1000 < self.state.basket_open_ts - 1:
+                continue
+            price = t.get("price")
+            qty = t.get("qty")
+            quote = t.get("quoteQty")
+            maker = t.get("maker", False)
+            rows.append(
+                f"        {oid:<10} {time.strftime('%H:%M:%S', time.gmtime(ts_ms/1000)) if ts_ms else '-':<9} {price:<10} {qty:<10} {quote:<10} {'maker' if maker else 'taker'}"
+            )
+        if rows:
+            self.log.info("Fills:  id         time      price      qty        quote      role")
+            for r in rows:
+                self.log.info(r)
 
     def _maybe_reset_state(self, position_qty: float) -> None:
         if abs(position_qty) < 1e-8 and self.state.direction:
@@ -364,7 +410,7 @@ class GridBollingerStrategy:
             if self.cfg.cooldown_minutes > 0:
                 self.state.cooldown_until_ts = time.time() + self.cfg.cooldown_minutes * 60
                 self.log.info("Cooldown active for %d minutes", self.cfg.cooldown_minutes)
-            self.state_store.save(self.state)
+                self.state_store.save(self.state)
 
     def on_price(self, price: float) -> None:
         self.bb.add(price)
@@ -378,6 +424,7 @@ class GridBollingerStrategy:
         mark_price = float(pos_info.get("markPrice", price) or price)
         unrealized = float(pos_info.get("unRealizedProfit", 0.0) or 0.0)
         entry_price = float(pos_info.get("entryPrice", 0.0) or 0.0)
+        self._ensure_basket_time_from_entries()
         if self.state.last_entry_price is None and entry_price:
             self.state.last_entry_price = entry_price
             spacing = self.cfg.grid_spacing_usd
@@ -417,6 +464,7 @@ class GridBollingerStrategy:
                 profit_at_tp = self._tp_profit(entry_price if entry_price > 0 else mark_price, best_tp, abs(position_qty), self.state.direction or "long")
             throttle = getattr(self, "_log_throttle", 60)
             orders_throttle = getattr(self, "_orders_log_throttle", throttle)
+            fills_throttle = getattr(self, "_fills_log_throttle", orders_throttle)
             if now - getattr(self, "_last_pos_log", 0) >= throttle:
                 self._last_pos_log = now
                 add_price = self.state.next_entry_price or 0.0
@@ -443,6 +491,9 @@ class GridBollingerStrategy:
             if now - getattr(self, "_last_orders_log", 0) >= orders_throttle:
                 self._last_orders_log = now
                 self._log_orders_snapshot(open_orders)
+            if now - getattr(self, "_last_fills_log", 0) >= fills_throttle:
+                self._last_fills_log = now
+                self._log_fills_snapshot()
             # Ensure TP aligns with current config/size
             try:
                 target_tp = self._tp_price(entry_price if entry_price > 0 else mark_price, abs(position_qty), self.state.direction or "long")
